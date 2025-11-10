@@ -38,10 +38,10 @@ def generate_dict_from_excel(file_path, value_I, pattern):
 
 # Beispielhafte Nutzung
 file_path = 'data/data_demand.xlsx'  # Pfad zur Datei
-value_I = 150  # Beispielwert für I
-pattern = 'medium'  # Beispielwert für Pattern
+value_I = 100
+pattern = 'Medium'
 
-demand_dict2 = generate_dict_from_excel(file_path, value_I, pattern)
+demand_dict = generate_dict_from_excel(file_path, value_I, pattern)
 
 new_max_value = False
 
@@ -50,7 +50,7 @@ new_max_value = False
 eps_ls = [0.06]
 chi_ls = [3]
 T = list(range(1, 29))
-I = list(range(1, 51))
+I = list(range(1, 101))
 K = [1, 2, 3]
 
 if new_max_value == True:
@@ -66,12 +66,12 @@ results2 = pd.DataFrame(columns=['I', 'epsilon', 'chi', 'undercover_norm', 'cons
 time_Limit = 7200
 time_cg = 7200
 time_cg_init = 10
-prob = 1.1
+prob = 1.0
 
 seed1 = 123 - math.floor(len(I)*len(T)) - adj
 print(seed1)
 random.seed(seed1)
-demand_dict = demand_dict_fifty_min(len(T), prob, len(I), 2, 0.25)
+demand_dict2 = demand_dict_fifty_min(len(T), prob, len(I), 2, 0.25)
 print('Demand dict', demand_dict)
 max_itr = 200
 output_len = 98
@@ -268,16 +268,6 @@ if status != gu.GRB.OPTIMAL:
     print(f"Optimization was stopped with status {status}")
     gu.sys.exit(1)
 
-nSolutions = master.model.SolCount
-print(f"Number of solutions found: {nSolutions}")
-
-# Print objective values of solutions
-for e in range(nSolutions):
-    master.model.setParam(gu.GRB.Param.SolutionNumber, e)
-    print(f"{master.model.PoolObjVal:g} ", end="")
-    if e % 15 == 14:
-        print("")
-print("")
 
 objValHistRMP.append(master.model.objval)
 
@@ -312,10 +302,12 @@ for epsilon in eps_ls:
 
         ## Column Generation
         # Bevaior
+        print('Doing behaviour')
         undercoverage, understaffing, perfloss, consistency, consistency_norm, undercoverage_norm, understaffing_norm, perfloss_norm, results_sc, results_r, autocorell, final_obj, final_lb, itr, lagrangeB, ls_sc_behav, ls_p_behavior, undercoverage_behavior = column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi,
                                     threshold, time_cg, I, T, K, prob)
 
         # Naive
+        print('Doing naive')
         ls_r1 = process_recovery(ls_sc1, chi, len(T))
         undercoverage_ab, understaffing_ab, perfloss_ab, consistency_ab, consistency_norm_ab, undercoverage_norm_ab, understaffing_norm_ab, perfloss_norm_ab, perf_ls_ab, undercover_naive_ab = master.calc_naive(
             ls_p1, ls_sc1, ls_r1, eps, prob)
@@ -333,16 +325,14 @@ for epsilon in eps_ls:
         #pio.write_image(fig, path, height=230, width=700, engine='kaleido')
 
        # print(f"Lists: {combine_lists(ls_sc_behav, ls_sc1, len(T), len(I))}")
-        performancePlotAvg(ls_p_behavior, perf_ls_ab, len(T), file, 10, eps, chi)
+        #performancePlotAvg(ls_p_behavior, perf_ls_ab, len(T), file, 10, eps, chi)
 
         a = create_dict_from_list(cumulative_total, len(T), len(K))
         b = create_dict_from_list(undercoverage_behavior, len(T), len(K))
-        print(f"aa :{a}")
-        print(f"ab :{b}")
 
-        plot_relative_undercover_dual(create_dict_from_list(undercoverage_behavior, len(T), len(K)),
-                                 create_dict_from_list(cumulative_total, len(T), len(K)), demand_dict, len(T),
-                                      len(K), 499, file3)
+        #plot_relative_undercover_dual(create_dict_from_list(undercoverage_behavior, len(T), len(K)),
+                                 #create_dict_from_list(cumulative_total, len(T), len(K)), demand_dict, len(T),
+                                      #len(K), 499, file3)
 
 
         undercoverage_pool.append(undercoverage_ab)
@@ -437,7 +427,7 @@ for epsilon in eps_ls:
         print("")
         print("")
         print("")
-        print(master.model.objval)
+        print('Master.objval', master.model.objval)
         print("")
         print("")
         print("")
@@ -446,10 +436,3 @@ for epsilon in eps_ls:
 #results.to_excel(file_name_xlsx, index=False)
 ##results2.to_csv(file_name_csv2, index=False)
 #results2.to_excel(file_name_xlsx2, index=False)
-
-pd.set_option('display.max_rows', None)
-pd.set_option('display.max_columns', None)
-pd.set_option('display.width', None)
-
-print(f'Comp: {results}')
-print(f'Beha: {results2}')
