@@ -1,0 +1,2 @@
+I,prob,lb,ub,gap,time,lb_cg,ub_cg,gap_cg,time_cg,iter,time_rmp,time_sp,time_ip
+25,Low,209.0,227.1,0.08,7200.1,224.809,225.9,0.485,192.565,82,1.919,189.412,0.192

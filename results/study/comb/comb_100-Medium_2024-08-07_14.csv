@@ -1,0 +1,2 @@
+I,pattern,epsilon,chi,objval,lbound,iteration,undercover,undercover_norm,cons,cons_norm,perf,perf_norm,max_auto,min_auto,mean_auto,lagrangeundercover,undercover_norm_n,cons_n,cons_norm_n,perf_n,perf_norm_n,max_auto_n,min_auto_n,mean_auto_n,lagrange_n,lagrange
+100,Medium,0.06,3,965.92,957.35048,131,965.92,9.6592,335.0,3.35,42.92,0.4292,0.28476,-0.17857,-0.02816,,,,,,,,,,,965.92
