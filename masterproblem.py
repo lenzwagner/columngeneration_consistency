@@ -103,7 +103,6 @@ class MasterProblem:
 
     def finalSolve(self, timeLimit):
         try:
-            self.model.setParam('TimeLimit', timeLimit)
             self.model.Params.IntegralityFocus = 1
             self.model.Params.FeasibilityTol = 1e-9
             self.model.Params.BarConvTol = 0.0

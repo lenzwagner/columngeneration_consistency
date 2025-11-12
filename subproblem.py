@@ -195,17 +195,9 @@ class Subproblem:
     def solveModelOpt(self, timeLimit):
         try:
             self.model.Params.TimeLimit = timeLimit
-            self.model.Params.MIPFocus = 1
-            self.model.Params.Presolve = 2
-            self.model.Params.Heuristics = 0.5
-            self.model.Params.Cuts = 1
-            self.model.Params.IntegralityFocus = 0
             self.model.Params.Threads = 0
-            self.model.Params.NodeMethod = 1
-            self.model.Params.Method = 1
             self.model.Params.OutputFlag = 0
-            self.model.Params.IntegralityFocus = 0
-            self.model.Params.MIPGap = 0.05
+            self.model.Params.MIPGap = 0.001
             self.model.optimize()
         except gu.GurobiError as e:
             print('Error code ' + str(e.errno) + ': ' + str(e))
@@ -213,16 +205,8 @@ class Subproblem:
     def solveModelNOpt(self, timeLimit):
         try:
             self.model.Params.TimeLimit = timeLimit
-            self.model.Params.MIPFocus = 1
-            self.model.Params.Presolve = 2
-            self.model.Params.Heuristics = 0.5
-            self.model.Params.Cuts = 1
-            self.model.Params.IntegralityFocus = 0
             self.model.Params.Threads = 0
-            self.model.Params.NodeMethod = 1
-            self.model.Params.Method = 1
             self.model.Params.OutputFlag = 0
-            self.model.Params.IntegralityFocus = 0
             self.model.Params.MIPGap = 0.05
             self.model.optimize()
         except gu.GurobiError as e:

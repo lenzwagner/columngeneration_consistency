@@ -175,32 +175,26 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
     final_obj = master.model.objval
     final_lb = objValHistRMP[-2]
 
+    if abs(final_obj) > 1e-6:
+        integrality_gap_pct = ((final_obj - final_lb) / final_obj) * 100
+    else:
+        integrality_gap_pct = 0.0
+
     status = master.model.Status
     if status in (gu.GRB.INF_OR_UNBD, gu.GRB.INFEASIBLE, gu.GRB.UNBOUNDED):
-        #print("The model cannot be solved because it is infeasible or unbounded")
         gu.sys.exit(1)
 
     if status != gu.GRB.OPTIMAL:
-        #print(f"Optimization was stopped with status {status}")
         gu.sys.exit(1)
 
-    nSolutions = master.model.SolCount
-    #print(f"Number of solutions found: {nSolutions}")
+    fin_time = time.time()
 
-    # Print objective values of solutions
-    for e in range(nSolutions):
-        master.model.setParam(gu.GRB.Param.SolutionNumber, e)
-        #print(f"{master.model.PoolObjVal:g} ", end="")
-        if e % 15 == 14:
-            print("")
-    #print("")
-    print('Time_Res:', sum(avg_sp_time), time.time()-t0)
 
     time_in_sps = sum(avg_sp_time)
-    time_in_rmp = time.time()-t0-time_ip2
+    time_in_rmp = time.time()-time_in_sps-time_ip2-t0
     time_in_ip = time_ip2
 
-    print('Testo', master.model.objval)
+    print('Testo', time_in_sps, time_in_rmp, time_in_ip)
     objValHistRMP.append(master.model.objval)
 
     lagranigan_bound = round((objValHistRMP[-2] + sum_rc_hist[-1]), 3)
@@ -246,25 +240,7 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
     understaffing_norm = min(understaffing_pool_norm)
     perfloss_norm = min(perf_pool_norm)
     consistency_norm = min(cons_pool_norm)
-
     undercoverage_behavior = master.getUndercoverage()
 
-    print("Undercoverage:", round(undercoverage, 5))
-    print("Understaffing:", round(understaffing, 5))
-    print("Performance loss:", round(perfloss, 5))
-    print("Consistency:", round(consistency, 5))
-    print("Normalized consistency:", round(consistency_norm, 5))
-    print("Normalized undercoverage:", round(undercoverage_norm, 5))
-    print("Normalized understaffing:", round(understaffing_norm, 5))
-    print("Normalized performance loss:", round(perfloss_norm, 5))
-    #print("Scenario results (schedule consistency):", results_sc)
-    #print("Scenario results (robustness):", results_r)
-    print("Final objective value:", round(final_obj, 5))
-    print("Final lower bound:", round(final_lb, 5))
-    print("Iterations:", itr)
-    print("Lagrangian bound:", lagranigan_bound)
-    print("Local search (schedule consistency):", len(ls_sc), ls_sc)
-    print("Local search (performance deviation):", ls_p_d)
-    print("Undercoverage behavior:", sum(undercoverage_behavior), undercoverage_behavior)
 
-    return round(undercoverage, 5), round(understaffing, 5), round(perfloss, 5), round(consistency, 5), round(consistency_norm, 5), round(undercoverage_norm, 5), round(understaffing_norm, 5), round(perfloss_norm, 5),  round(final_obj, 5), round(final_lb, 5), itr, lagranigan_bound, ls_sc, ls_p_d, undercoverage_behavior, time_in_sps, time_in_rmp, time_in_ip, final_itr
+    return round(undercoverage, 5), round(understaffing, 5), round(perfloss, 5), round(consistency, 5), round(consistency_norm, 5), round(undercoverage_norm, 5), round(understaffing_norm, 5), round(perfloss_norm, 5),  round(final_obj, 5), round(final_lb, 5), itr, lagranigan_bound, integrality_gap_pct, [1 if x > 0.5 else 0 for x in ls_sc], ls_p_d, undercoverage_behavior, time_in_sps, time_in_rmp, time_in_ip, final_itr
