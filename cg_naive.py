@@ -173,112 +173,42 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
         #print(f"Optimization was stopped with status {status}")
         gu.sys.exit(1)
 
-    nSolutions = master.model.SolCount
-    #print(f"Number of solutions found: {nSolutions}")
-
-    # Print objective values of solutions
-    for e in range(nSolutions):
-        master.model.setParam(gu.GRB.Param.SolutionNumber, e)
-        #print(f"{master.model.PoolObjVal:g} ", end="")
-        if e % 15 == 14:
-            print("")
-    #print("")
-
-    objValHistRMP.append(master.model.objval)
-
-    lagranigan_bound = round((objValHistRMP[-2] + sum_rc_hist[-1]), 3)
-
-    # Calc Stats
-    undercoverage_pool = []
-    understaffing_pool = []
-    perf_pool = []
-    cons_pool = []
-    undercoverage_pool_norm = []
-    understaffing_pool_norm = []
-    perf_pool_norm = []
-    cons_pool_norm = []
-
     sol = master.printLambdas()
 
     ls_sc1 = plotPerformanceList(Cons_schedules, sol)
     ls_p1 = plotPerformanceList(Perf_schedules, sol)
-    ls_x1 = plotPerformanceList(X_schedules, sol)
     ls_r1 = process_recovery(ls_sc1, chi, len(T))
 
-    undercoverage_ab, understaffing_ab, perfloss_ab, consistency_ab, consistency_norm_ab, undercoverage_norm_ab, understaffing_norm_ab, perfloss_norm_ab = master.calc_naive(
-        ls_p1, ls_sc1, ls_r1, epsi, scale)
+    undercoverage_, understaffing_, perfloss_, consistency_, consistency_norm_, undercoverage_norm_, understaffing_norm_, perfloss_norm_, perf_ls_, cumulative_total_ = master.calc_naive(ls_p1, ls_sc1, ls_r1, epsi, scale)
 
-    undercoverage_pool.append(undercoverage_ab)
-    understaffing_pool.append(understaffing_ab)
-    perf_pool.append(perfloss_ab)
-    cons_pool.append(consistency_ab)
-    undercoverage_pool_norm.append(undercoverage_norm_ab)
-    understaffing_pool_norm.append(understaffing_norm_ab)
-    perf_pool_norm.append(perfloss_norm_ab)
-    cons_pool_norm.append(consistency_norm_ab)
+    undercoverage_naive = master.getUndercoverage()
 
-    #print(f"Solcount: {master.model.SolCount}")
-    for k in range(master.model.SolCount):
-        master.model.setParam(gu.GRB.Param.SolutionNumber, k)
-        vals = master.model.getAttr("Xn", master.lmbda)
+    # Print each value with description
+    print("Undercoverage:", undercoverage_)
+    print("Understaffing:", understaffing_)
+    print("Performance loss:", perfloss_)
+    print("Consistency:", consistency_)
+    print("Normalized consistency:", consistency_norm_)
+    print("Normalized undercoverage:", undercoverage_norm_)
+    print("Normalized understaffing:", understaffing_norm_)
+    print("Normalized performance loss:", perfloss_norm_)
+    print("Performance local search:", perf_ls_)
+    print("Cumulative total:", cumulative_total_)
+    cumulative_with_naive = [cumulative_total_[j] + undercoverage_naive[j] for j in range(len(cumulative_total_))]
+    print("Cumulative total + naive undercoverage:", cumulative_with_naive)
 
-        solution = {key: round(value) for key, value in vals.items()}
-        sum_lambda = sum(solution.values())
-        if abs(sum_lambda - len(I)) > 1e-6:
-            #print(f"Skipping infeasible solution {k}: sum of lambda = {sum_lambda}")
-            continue
-
-        #print(f"Processing feasible solution {k}")
-
-        ls_sc = plotPerformanceList(Cons_schedules, solution)
-        #print(f"LsSc {ls_sc}")
-        ls_p = plotPerformanceList(Perf_schedules, solution)
-        ls_r = process_recovery(ls_sc, chi, len(T))
-        ls_x = plotPerformanceList(X_schedules, solution)
-
-        undercoverage_a, understaffing_a, perfloss_a, consistency_a, consistency_norm_a, undercoverage_norm_a, understaffing_norm_a, perfloss_norm_a = master.calc_naive(
-            ls_p, ls_sc, ls_r, epsi, scale)
-
-        undercoverage_pool.append(undercoverage_a)
-        understaffing_pool.append(understaffing_a)
-        perf_pool.append(perfloss_a)
-        cons_pool.append(consistency_a)
-        undercoverage_pool_norm.append(undercoverage_norm_a)
-        understaffing_pool_norm.append(understaffing_norm_a)
-        perf_pool_norm.append(perfloss_norm_a)
-        cons_pool_norm.append(consistency_norm_a)
-
-    undercoverage = sum(undercoverage_pool) / len(undercoverage_pool)
-    understaffing = sum(understaffing_pool) / len(understaffing_pool)
-    perfloss = sum(perf_pool) / len(perf_pool)
-    consistency = sum(cons_pool) / len(cons_pool)
-    undercoverage_norm = sum(undercoverage_pool_norm) / len(undercoverage_pool_norm)
-    understaffing_norm = sum(understaffing_pool_norm) / len(understaffing_pool_norm)
-    perfloss_norm = sum(perf_pool_norm) / len(perf_pool_norm)
-    consistency_norm = sum(cons_pool_norm) / len(cons_pool_norm)
-
-    #print(undercoverage_norm)
-
-    # Coefficients
-    sums, mean_value, min_value, max_value, indices_list = master.average_nr_of(ls_sc, len(master.nurses))
-    variation_coefficients = [master.calculate_variation_coefficient(indices) for indices in indices_list]
-    mean_variation_coefficient = (round(np.mean(variation_coefficients) * 100, 4))
-    min_variation_coefficient = (round(np.min(variation_coefficients) * 100, 4))
-    max_variation_coefficient = (round(np.max(variation_coefficients) * 100, 4))
-    std_variation_coefficient = (round(np.std(variation_coefficients) * 100, 4))
-    results_sc = [mean_variation_coefficient, min_variation_coefficient, max_variation_coefficient,
-                  std_variation_coefficient]
-
-    sums_r, mean_value_r, min_value_r, max_value_r, indices_list_r = master.average_nr_of(ls_r, len(master.nurses))
-    variation_coefficients_r = [master.calculate_variation_coefficient(indices) for indices in indices_list_r]
-    mean_variation_coefficient_r = (round(np.mean(variation_coefficients_r) * 100, 4))
-    min_variation_coefficient_r = (round(np.min(variation_coefficients_r) * 100, 4))
-    max_variation_coefficient_r = (round(np.max(variation_coefficients_r) * 100, 4))
-    std_variation_coefficient_r = (round(np.std(variation_coefficients_r) * 100, 4))
-    results_r = [mean_variation_coefficient_r, min_variation_coefficient_r, max_variation_coefficient_r,
-                 std_variation_coefficient_r]
-
-    # Gini
-    autocorrel = master.autoccorrel(ls_sc, len(master.nurses), 2)
-
-    return round(undercoverage, 5), round(understaffing, 5), round(perfloss, 5), round(consistency, 5), round(consistency_norm, 5), round(undercoverage_norm, 5), round(understaffing_norm, 5), round(perfloss_norm, 5), results_sc, results_r, autocorrel, lagranigan_bound
+    # Return all values
+    return (
+        undercoverage_,
+        understaffing_,
+        perfloss_,
+        consistency_,
+        consistency_norm_,
+        undercoverage_norm_,
+        understaffing_norm_,
+        perfloss_norm_,
+        perf_ls_,
+        [1 if x > 0.5 else 0 for x in ls_sc1],
+        cumulative_total_,
+        cumulative_with_naive
+    )

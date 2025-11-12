@@ -2,6 +2,24 @@ from itertools import chain
 import random
 import math
 import numpy as np
+import pandas as pd
+
+def generate_dict_from_excel(file_path, value_I, pattern, scenario):
+
+    data = pd.read_excel(file_path)
+
+    filtered_row = data[(data['I'] == value_I) & (data['Pattern'] == pattern) & (data['Scenario'] == scenario) ]
+
+    if not filtered_row.empty:
+        result_dict = {
+            tuple(map(int, col.split(','))): filtered_row[col].values[0]
+            for col in data.columns if ',' in col
+        }
+        return result_dict
+    else:
+        print("No data.")
+        return {}
+
 
 # **** Print Results Table ****
 def printResults(itr, total_time, time_problem, nr, optimal_ip, optimal_lp, lagranigan_bound, compact_obj, step):

@@ -310,7 +310,7 @@ class MasterProblem:
 
         #print(
             #"\nUndercoverage: {:.4f}\nUnderstaffing: {:.4f}\nPerformance Loss: {:.4f}\nConsistency: {:.4f}\nNorm_Undercoverage: {:.4f}\nNorm_Understaffing: {:.4f}\nNorm_Performance Loss: {:.4f}\nNorm_Consistency: {:.4f}\n".format(
-                #undercoverage,
+               # undercoverage,
                 #understaffing, perfloss, consistency, undercoverage_norm, understaffing_norm, perfloss_norm,
                 #consistency_norm))
 

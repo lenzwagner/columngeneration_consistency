@@ -140,7 +140,7 @@ def plot_demand_pattern(demands, days, shifts):
     plt.grid(True)
     plt.savefig('demand.svg', bbox_inches='tight')
 
-    plt.show()
+    #plt.show()
 
 def plot_demand_bar(demands, days, shifts):
     """

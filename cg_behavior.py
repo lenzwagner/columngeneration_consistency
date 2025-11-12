@@ -1,3 +1,5 @@
+import time
+
 from masterproblem import *
 from subproblem import *
 from Utils.gcutil import *
@@ -155,6 +157,7 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
         objValHistSP.clear()
         avg_time = sum(timeHist) / len(timeHist)
         avg_sp_time.append(avg_time)
+
         timeHist.clear()
 
         if not modelImprovable:
@@ -165,7 +168,9 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
         max_itr *= 2
 
     # Solve Master Problem with integrality restored
+    time_ip1 = time.time()
     master.finalSolve(300)
+    time_ip2 = time.time() - time_ip1
     objValHistRMP.append(master.model.objval)
     final_obj = master.model.objval
     final_lb = objValHistRMP[-2]
@@ -189,7 +194,13 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
         if e % 15 == 14:
             print("")
     #print("")
+    print('Time_Res:', sum(avg_sp_time), time.time()-t0)
 
+    time_in_sps = sum(avg_sp_time)
+    time_in_rmp = time.time()-t0-time_ip2
+    time_in_ip = time_ip2
+
+    print('Testo', master.model.objval)
     objValHistRMP.append(master.model.objval)
 
     lagranigan_bound = round((objValHistRMP[-2] + sum_rc_hist[-1]), 3)
@@ -212,6 +223,8 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
     ls_p = plotPerformanceList(Perf_schedules, sol)
     ls_r = process_recovery(ls_sc, chi, len(T))
 
+    final_itr = itr
+
     undercoverage_ab, understaffing_ab, perfloss_ab, consistency_ab, consistency_norm_ab, undercoverage_norm_ab, understaffing_norm_ab, perfloss_norm_ab = master.calc_behavior(
         ls_p, ls_sc, scale)
 
@@ -225,11 +238,6 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
     cons_pool_norm.append(consistency_norm_ab)
 
 
-    #print(f"Total feasible solutions processed: {len(undercoverage_pool)}")
-    #print(f"Under-List: {undercoverage_pool}")
-    #print(f"Perf-List: {perf_pool}")
-    #print(f"Cons-List: {cons_pool}")
-
     undercoverage = min(undercoverage_pool)
     understaffing = min(understaffing_pool)
     perfloss = min(perf_pool)
@@ -238,28 +246,25 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
     understaffing_norm = min(understaffing_pool_norm)
     perfloss_norm = min(perf_pool_norm)
     consistency_norm = min(cons_pool_norm)
-    # Coefficients
-    sums, mean_value, min_value, max_value, indices_list = master.average_nr_of(ls_sc, len(master.nurses))
-    variation_coefficients = [master.calculate_variation_coefficient(indices) for indices in indices_list]
-    mean_variation_coefficient = (round(np.mean(variation_coefficients) * 100, 4))
-    min_variation_coefficient = (round(np.min(variation_coefficients) * 100, 4))
-    max_variation_coefficient = (round(np.max(variation_coefficients) * 100, 4))
-    std_variation_coefficient = (round(np.std(variation_coefficients) * 100, 4))
-    results_sc = [mean_variation_coefficient, min_variation_coefficient, max_variation_coefficient, std_variation_coefficient]
-
-    sums_r, mean_value_r, min_value_r, max_value_r, indices_list_r = master.average_nr_of(ls_r, len(master.nurses))
-    variation_coefficients_r = [master.calculate_variation_coefficient(indices) for indices in indices_list_r]
-    mean_variation_coefficient_r = (round(np.mean(variation_coefficients_r) * 100, 4))
-    min_variation_coefficient_r = (round(np.min(variation_coefficients_r) * 100, 4))
-    max_variation_coefficient_r = (round(np.max(variation_coefficients_r) * 100, 4))
-    std_variation_coefficient_r = (round(np.std(variation_coefficients_r)* 100, 4))
-    results_r = [mean_variation_coefficient_r, min_variation_coefficient_r, max_variation_coefficient_r, std_variation_coefficient_r]
 
     undercoverage_behavior = master.getUndercoverage()
-    # Gini
-    #gini_sc = master.gini_coefficient(ls_sc, len(master.nurses))
-    #gini_r = master.gini_coefficient(ls_r, len(master.nurses))
 
-    autocorrel = master.autoccorrel(ls_sc, len(master.nurses), 2)
+    print("Undercoverage:", round(undercoverage, 5))
+    print("Understaffing:", round(understaffing, 5))
+    print("Performance loss:", round(perfloss, 5))
+    print("Consistency:", round(consistency, 5))
+    print("Normalized consistency:", round(consistency_norm, 5))
+    print("Normalized undercoverage:", round(undercoverage_norm, 5))
+    print("Normalized understaffing:", round(understaffing_norm, 5))
+    print("Normalized performance loss:", round(perfloss_norm, 5))
+    #print("Scenario results (schedule consistency):", results_sc)
+    #print("Scenario results (robustness):", results_r)
+    print("Final objective value:", round(final_obj, 5))
+    print("Final lower bound:", round(final_lb, 5))
+    print("Iterations:", itr)
+    print("Lagrangian bound:", lagranigan_bound)
+    print("Local search (schedule consistency):", len(ls_sc), ls_sc)
+    print("Local search (performance deviation):", ls_p_d)
+    print("Undercoverage behavior:", sum(undercoverage_behavior), undercoverage_behavior)
 
-    return round(undercoverage, 5), round(understaffing, 5), round(perfloss, 5), round(consistency, 5), round(consistency_norm, 5), round(undercoverage_norm, 5), round(understaffing_norm, 5), round(perfloss_norm, 5), results_sc, results_r, autocorrel, round(final_obj, 5), round(final_lb, 5), itr, lagranigan_bound, ls_sc, ls_p_d, undercoverage_behavior
+    return round(undercoverage, 5), round(understaffing, 5), round(perfloss, 5), round(consistency, 5), round(consistency_norm, 5), round(undercoverage_norm, 5), round(understaffing_norm, 5), round(perfloss_norm, 5),  round(final_obj, 5), round(final_lb, 5), itr, lagranigan_bound, ls_sc, ls_p_d, undercoverage_behavior, time_in_sps, time_in_rmp, time_in_ip, final_itr
