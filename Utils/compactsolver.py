@@ -196,6 +196,7 @@ class Problem:
 
     def ModelParams(self):
         self.model.setParam('ConcurrentMIP', 2)
+        self.model.setParam('Threads', 1)
 
     def solveModel(self):
         self.t1 = time.time()
