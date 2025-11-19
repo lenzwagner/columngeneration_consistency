@@ -8,19 +8,19 @@ import time
 
 # DataFrame for results
 results = pd.DataFrame(columns=['I', 'T', 'K', 'pattern', 'scenario', 'prob', 'epsilon', 'chi',
-                                'objval', 'total_time', 'undercoverage'])
+                                'incumbent', 'lower_bound', 'total_time', 'undercoverage'])
 
 # Times and Parameters
-time_Limit = 7200
+time_Limit = 3600
 
 start_time = time.time()
 
 # Loop - same instance configuration as in loop.py
 for epsilon in [0.06]:
     for chi in [3]:
-        for len_I in [50, 100, 150]:
+        for len_I in [50]:
             for pattern in ['Low']:
-                for scenario in range(1, 26):
+                for scenario in range(1, 6):
                     if pattern == 'Medium':
                         prob = 1.0
                     elif pattern == 'High':
@@ -39,7 +39,7 @@ for epsilon in [0.06]:
                         'K': K + [np.nan] * (max(len(I), len(T), len(K)) - len(K))
                     })
 
-                    demand_dict = generate_dict_from_excel('data/demand_scenarios.xlsx', len(I), pattern, scenario=1)
+                    demand_dict = generate_dict_from_excel('data/demand_scenarios.xlsx', len(I), pattern, scenario)
                     eps = epsilon
                     print('demand_dict', demand_dict)
 
@@ -66,7 +66,8 @@ for epsilon in [0.06]:
 
                     # Get results
                     try:
-                        objval = compact_model.model.ObjVal
+                        lower_bound = compact_model.model.ObjBound
+                        incumbent = compact_model.model.ObjVal
                         gap = compact_model.model.MIPGap
 
                         # Calculate undercoverage from u variables
@@ -74,14 +75,16 @@ for epsilon in [0.06]:
 
                         status = compact_model.model.Status
 
-                        print(f"Objective Value: {objval:.3f}")
+                        print(f"Lower Bound: {lower_bound:.3f}")
+                        print(f"Incumbent: {incumbent:.3f}")
                         print(f"MIP Gap: {gap:.3%}")
                         print(f"Solve Time: {solve_time:.2f}s")
                         print(f"Status: {status}")
 
                     except Exception as e:
                         print(f"Error retrieving solution: {e}")
-                        objval = None
+                        lower_bound = None
+                        incumbent = None
                         gap = None
                         undercoverage = None
                         status = None
@@ -96,7 +99,8 @@ for epsilon in [0.06]:
                         'prob': prob,
                         'epsilon': eps,
                         'chi': chi,
-                        'objval': round(objval, 3) if objval is not None else None,
+                        'incumbent': round(incumbent, 3) if incumbent is not None else None,
+                        'lower_bound': round(lower_bound, 3) if lower_bound is not None else None,
                         'gap': round(gap, 3) if gap is not None else None,
                         'total_time': round(solve_time, 3),
                         'undercoverage': round(undercoverage, 3) if undercoverage is not None else None,
@@ -107,7 +111,7 @@ for epsilon in [0.06]:
 
 # Save results
 results.to_csv('results/Results_Compact.csv', index=False)
-results.to_excel(f'results/Results_Compact_{datetime.now().strftime("%d_%m_%Y_%H-%M")}.xlsx', index=False)
+results.to_excel(f'results/Results_Compact_50_low_1-5.xlsx', index=False)
 
 print(f"\nTotal execution time: {time.time() - start_time:.2f} seconds")
 print(f"Results saved to results/Results_Compact.csv")
