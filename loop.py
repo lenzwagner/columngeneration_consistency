@@ -43,7 +43,7 @@ for epsilon in [0.06]:
                         'K': K + [np.nan] * (max(len(I), len(T), len(K)) - len(K))
                     })
 
-                    demand_dict = generate_dict_from_excel('data/demand_scenarios.xlsx', len(I), pattern, scenario=1)
+                    demand_dict = generate_dict_from_excel('data/demand_scenarios.xlsx', len(I), pattern, scenario)
                     df_demand = pd.read_excel('data/data_demand.xlsx', engine='openpyxl')
                     eps = epsilon
 
