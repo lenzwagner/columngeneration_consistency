@@ -180,7 +180,7 @@ class MasterProblem:
 
         i, r = map(int, var_name.split('_')[1:])
 
-        print(f"Fraktionalste Variable: lambda_{i}_{r} mit Wert {var_value}")
+        print(f"Most fractional variable: lambda_{i}_{r} with value {var_value}")
         return (i, r), var_value
 
     def calc_behavior(self, lst, ls_sc, scale):
@@ -213,7 +213,7 @@ class MasterProblem:
         understaffing_norm = understaffing / (len(self.nurses)*scale)
         perfloss_norm = perfloss / (len(self.nurses)*scale)
 
-        # Ausgabe
+        # Output
         #print(
             #"\nUndercoverage: {:.4f}\nUnderstaffing: {:.4f}\nPerformance Loss: {:.4f}\nConsistency: {:.4f}\nNorm_Undercoverage: {:.4f}\nNorm_Understaffing: {:.4f}\nNorm_Performance Loss: {:.4f}\nNorm_Consistency: {:.4f}\n".format(
                # undercoverage,
@@ -256,8 +256,8 @@ class MasterProblem:
         index = 0
         self.doctors_cumulative_multiplied = []
 
-        # Initialisiere die Liste mit 28*3 Nullen
-        cumulative_total = [0] * (28 * 3)
+        # Initialize the list with 28*3 zeros
+        cumulative_total = [0] * (len(self.days) * len(self.shifts))
 
         for i in self.nurses:
             doctor_values = sc_values2[index]
@@ -302,17 +302,10 @@ class MasterProblem:
         understaffing = u_results
         perfloss = self.sum_all_doctors
 
-        # Normalisierte Werte
+        # Normalized values
         undercoverage_norm = undercoverage / (len(self.nurses) * scale)
         understaffing_norm = understaffing / (len(self.nurses) * scale)
         perfloss_norm = perfloss / (len(self.nurses) * scale)
-        #print(f"Perf_Ls: {perf_ls}")
-
-        #print(
-            #"\nUndercoverage: {:.4f}\nUnderstaffing: {:.4f}\nPerformance Loss: {:.4f}\nConsistency: {:.4f}\nNorm_Undercoverage: {:.4f}\nNorm_Understaffing: {:.4f}\nNorm_Performance Loss: {:.4f}\nNorm_Consistency: {:.4f}\n".format(
-               # undercoverage,
-                #understaffing, perfloss, consistency, undercoverage_norm, understaffing_norm, perfloss_norm,
-                #consistency_norm))
 
         return undercoverage, understaffing, perfloss, consistency, consistency_norm, undercoverage_norm, understaffing_norm, perfloss_norm, perf_ls, cumulative_total
 
@@ -380,7 +373,7 @@ class MasterProblem:
         lag (int): Lag.
 
         Returns:
-        float: Der Autokorrelationswert für den angegebenen Lag.
+        float: The autocorrelation value for the given lag.
         """
         n = len(series)
         if lag >= n:

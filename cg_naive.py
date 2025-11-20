@@ -23,6 +23,7 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
     start_values_perf = {(t, s): problem_start.perf[1, t, s].x for t in T for s in K}
     start_values_p = {(t): problem_start.p[1, t].x for t in T}
     start_values_x = {(t, s): problem_start.x[1, t, s].x for t in T for s in K}
+    start_values_r = {(t): problem_start.r[1, t].x for t in T}
     start_values_c = {(t): problem_start.sc[1, t].x for t in T}
 
     # Initialize iterations
@@ -43,6 +44,7 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
     Perf_schedules = create_schedule_dict(start_values_perf, 1, T, K)
     Cons_schedules = create_schedule_dict(start_values_c, 1, T)
     P_schedules = create_schedule_dict(start_values_p, 1, T)
+    Recovery_schedules = create_schedule_dict(start_values_r, 1, T)
     X1_schedules = create_schedule_dict(start_values_x, 1, T, K)
 
     master = MasterProblem(data, demand_dict, max_itr, itr, last_itr, output_len, start_values_perf)
@@ -104,9 +106,9 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
         timeHist.append(sub_totaltime)
         index = 1
 
-        keys = ["X", "Perf", "P", "C", "X1"]
-        methods = ["getOptX", "getOptPerf", "getOptP", "getOptC", "getOptX"]
-        schedules = [X_schedules, Perf_schedules, P_schedules, Cons_schedules, X1_schedules]
+        keys = ["X", "Perf", "P", "C", "X1", "Recovery"]
+        methods = ["getOptX", "getOptPerf", "getOptP", "getOptC", "getOptX", "getOptR"]
+        schedules = [X_schedules, Perf_schedules, P_schedules, Cons_schedules, X1_schedules, Recovery_schedules]
 
         for key, method, schedule in zip(keys, methods, schedules):
             value = getattr(subproblem, method)()
@@ -173,16 +175,19 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
         #print(f"Optimization was stopped with status {status}")
         gu.sys.exit(1)
 
-    sol = master.printLambdas()
 
-    ls_sc1 = plotPerformanceList(Cons_schedules, sol)
-    ls_p1 = plotPerformanceList(Perf_schedules, sol)
-    ls_r1 = process_recovery(ls_sc1, chi, len(T))
+    ls_p = [round(x, 2) for x in plotPerformanceList(P_schedules, master.printLambdas())]
+    ls_sc = [1.0 if x > 0.5 else 0.0 for x in plotPerformanceList(Cons_schedules, master.printLambdas())]
+    ls_perf_ = [round(x, 2) for x in plotPerformanceList(Perf_schedules, master.printLambdas())]
+    ls_x = [1.0 if x > 0 else 0.0 for x in ls_perf_]
+    ls_rec = process_recovery(ls_sc, chi, len(T))
 
-    undercoverage_, understaffing_, perfloss_, consistency_, consistency_norm_, undercoverage_norm_, understaffing_norm_, perfloss_norm_, perf_ls_, cumulative_total_ = master.calc_naive(ls_p1, ls_sc1, ls_r1, epsi, scale)
+
+
+    undercoverage_, understaffing_, perfloss_, consistency_, consistency_norm_, undercoverage_norm_, understaffing_norm_, perfloss_norm_, ls_perf, cumulative_total_ = master.calc_naive(ls_perf_, ls_sc, ls_rec, epsi, scale)
 
     undercoverage_naive = master.getUndercoverage()
-
+    print(ls_p, ls_sc, ls_perf, ls_x, ls_rec, sep="\n")
     # Print each value with description
     print("Undercoverage:", undercoverage_)
     print("Understaffing:", understaffing_)
@@ -192,10 +197,20 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
     print("Normalized undercoverage:", undercoverage_norm_)
     print("Normalized understaffing:", understaffing_norm_)
     print("Normalized performance loss:", perfloss_norm_)
-    print("Performance local search:", perf_ls_)
+    print("Performance local search:", ls_perf)
     print("Cumulative total:", cumulative_total_)
     cumulative_with_naive = [cumulative_total_[j] + undercoverage_naive[j] for j in range(len(cumulative_total_))]
     print("Cumulative total + naive undercoverage:", cumulative_with_naive)
+
+    # Inequality
+    L_perf = [x * (1 - p) for x, p in zip(ls_x, ls_perf)]
+    results_ineq_sc, spread_sc, load_share_sc, gini_sc = evaluate_inequality(ls_sc, len(master.days),
+                                                                             len(master.nurses))
+    results_ineq_perf, spread_perf, load_share_perf, gini_perf = evaluate_inequality(
+        [sum(L_perf[i:i + 3]) for i in range(0, len(L_perf), 3)], len(master.days), len(master.nurses))
+
+    # shift blocks
+    shift_blocks = analyze_and_plot_blocks(ls_x, len(master.nurses), len(master.days), len(master.shifts))
 
     # Return all values
     return (
@@ -207,8 +222,20 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
         undercoverage_norm_,
         understaffing_norm_,
         perfloss_norm_,
-        perf_ls_,
-        [1 if x > 0.5 else 0 for x in ls_sc1],
-        cumulative_total_,
-        cumulative_with_naive
+        master.model.objval,
+        ls_p,
+        ls_sc,
+        ls_perf,
+        ls_x,
+        ls_rec,
+        cumulative_with_naive,
+        results_ineq_sc,
+        spread_sc,
+        load_share_sc,
+        gini_sc,
+        results_ineq_perf,
+        spread_perf,
+        load_share_perf,
+        gini_perf,
+        shift_blocks
     )

@@ -1,3 +1,4 @@
+import sys
 import time
 
 from masterproblem import *
@@ -187,69 +188,30 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
     if status != gu.GRB.OPTIMAL:
         gu.sys.exit(1)
 
-    fin_time = time.time()
-
-
     time_in_sps = sum(avg_sp_time)
     time_in_rmp = time.time()-time_in_sps-time_ip2-t0
     time_in_ip = time_ip2
 
-    print('Testo', time_in_sps, time_in_rmp, time_in_ip)
     objValHistRMP.append(master.model.objval)
-
     lagranigan_bound = round((objValHistRMP[-2] + sum_rc_hist[-1]), 3)
 
-    # Calc Stats
-    undercoverage_pool = []
-    understaffing_pool = []
-    perf_pool = []
-    cons_pool = []
-    undercoverage_pool_norm = []
-    understaffing_pool_norm = []
-    perf_pool_norm = []
-    cons_pool_norm = []
+    ls_p = [round(x, 2) for x in plotPerformanceList(P_schedules, master.printLambdas())]
+    ls_sc = [1.0 if x > 0.5 else 0.0 for x in plotPerformanceList(Cons_schedules, master.printLambdas())]
+    ls_perf = [round(x, 2) for x in plotPerformanceList(Perf_schedules, master.printLambdas())]
+    ls_x = [1.0 if x > 0 else 0.0 for x in ls_perf]
+    ls_rec = [1.0 if x > 0.5 else 0.0 for x in plotPerformanceList(Recovery_schedules, master.printLambdas())]
 
-    sol = master.printLambdas()
+    print('Fly_1')
+    print(ls_p, ls_sc, ls_perf, ls_x, ls_rec, sep="\n")
 
-    ls_p_d = plotPerformanceList(P_schedules, sol)
-    print('LS_P', len(ls_p_d))
-    print(P_schedules)
-    ls_sc = plotPerformanceList(Cons_schedules, sol)
-    print('LS_SC', len(ls_sc))
-    print(Cons_schedules)
-    ls_p = plotPerformanceList(Perf_schedules, sol)
-    print('LS_PERF', len(ls_p))
-    print(Perf_schedules)
-    ls_r = process_recovery(ls_sc, chi, len(T))
-    ls_r2 = plotPerformanceList(Recovery_schedules, sol)
-    print('LS_R', len(ls_r))
-    print('LS_R2', len(ls_r2))
-    print(Recovery_schedules)
+    # Inequality
+    L_perf = [x * (1 - p) for x, p in zip(ls_x, ls_perf)]
+    results_ineq_sc, spread_sc, load_share_sc, gini_sc = evaluate_inequality(ls_sc, len(master.days), len(master.nurses))
+    results_ineq_perf, spread_perf, load_share_perf, gini_perf = evaluate_inequality([sum(L_perf[i:i + 3]) for i in range(0, len(L_perf), 3)], len(master.days), len(master.nurses))
 
-    final_itr = itr
+    # shift blocks
+    shift_blocks = analyze_and_plot_blocks(ls_x, len(master.nurses), len(master.days), len(master.shifts))
 
-    undercoverage_ab, understaffing_ab, perfloss_ab, consistency_ab, consistency_norm_ab, undercoverage_norm_ab, understaffing_norm_ab, perfloss_norm_ab = master.calc_behavior(
-        ls_p, ls_sc, scale)
+    undercoverage_ab, understaffing_ab, perfloss_ab, consistency_ab, consistency_norm_ab, undercoverage_norm_ab, understaffing_norm_ab, perfloss_norm_ab = master.calc_behavior(ls_perf, ls_sc, scale)
 
-    undercoverage_pool.append(undercoverage_ab)
-    understaffing_pool.append(understaffing_ab)
-    perf_pool.append(perfloss_ab)
-    cons_pool.append(consistency_ab)
-    undercoverage_pool_norm.append(undercoverage_norm_ab)
-    understaffing_pool_norm.append(understaffing_norm_ab)
-    perf_pool_norm.append(perfloss_norm_ab)
-    cons_pool_norm.append(consistency_norm_ab)
-
-
-    undercoverage = min(undercoverage_pool)
-    understaffing = min(understaffing_pool)
-    perfloss = min(perf_pool)
-    consistency = min(cons_pool)
-    undercoverage_norm = min(undercoverage_pool_norm)
-    understaffing_norm = min(understaffing_pool_norm)
-    perfloss_norm = min(perf_pool_norm)
-    consistency_norm = min(cons_pool_norm)
-    undercoverage_behavior = master.getUndercoverage()
-
-
-    return round(undercoverage, 5), round(understaffing, 5), round(perfloss, 5), round(consistency, 5), round(consistency_norm, 5), round(undercoverage_norm, 5), round(understaffing_norm, 5), round(perfloss_norm, 5),  round(final_obj, 5), round(final_lb, 5), itr, lagranigan_bound, integrality_gap_pct, [1 if x > 0.5 else 0 for x in ls_sc], ls_p_d, undercoverage_behavior, time_in_sps, time_in_rmp, time_in_ip, final_itr
+    return round(undercoverage_ab, 5), round(understaffing_ab, 5), round(perfloss_ab, 5), round(consistency_ab, 5), round(consistency_norm_ab, 5), round(undercoverage_norm_ab, 5), round(understaffing_norm_ab, 5), round(perfloss_norm_ab, 5),  round(final_obj, 5), round(final_lb, 5), itr, lagranigan_bound, integrality_gap_pct, time_in_sps, time_in_rmp, time_in_ip, ls_p, ls_sc, ls_perf, ls_x, ls_rec, [0.0 if abs(round(x, 3)) == 0 else round(x, 2) for x in master.getUndercoverage()], results_ineq_sc, spread_sc, load_share_sc, gini_sc, results_ineq_perf, spread_perf, load_share_perf, gini_perf, shift_blocks

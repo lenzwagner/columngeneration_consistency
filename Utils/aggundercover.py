@@ -51,7 +51,7 @@ def plot_undercover(ls, days, shifts, pt):
 
     for bar in bars:
         yval = bar.get_height()
-        # Formatierung des Werts abhängig davon, ob es ein Integer ist oder nicht
+        # Format the value depending on whether it is an integer or not
         yval_str = f"{int(yval)}" if yval.is_integer() else f"{yval:.2f}"
         plt.text(bar.get_x() + bar.get_width() / 2, yval, yval_str, ha='center', va='bottom', fontsize=9)
 
@@ -110,7 +110,7 @@ def plot_undercover_d(ls, days, shifts, pt, filename_suffix=''):
 
     plt.tight_layout()
 
-    # Erstellen Sie den Dateinamen mit dem optionalen Suffix
+    # Create the filename with the optional suffix
     base_filename = 'daily_undercover'
     if filename_suffix:
         base_filename += f'_{filename_suffix}'
@@ -127,19 +127,19 @@ def plot_relative_undercover(ls1, ls2, demand_dict, days, shifts, pt, filename_s
     daily_relative_undercover2 = []
 
     for day in range(1, days + 1):
-        # Summe des Undercoverage pro Tag für beide Listen
+        # Sum of undercoverage per day for both lists
         daily_sum1 = sum(ls1.get((day, shift), 0) for shift in range(1, shifts + 1))
         daily_sum2 = sum(ls2.get((day, shift), 0) for shift in range(1, shifts + 1))
 
-        # Summe des Demands pro Tag
+        # Sum of demand per day
         daily_demand_sum = sum(demand_dict.get((day, shift), 0) for shift in range(1, shifts + 1))
 
-        # Berechnung des relativen Undercoverage für beide Listen
+        # Calculate relative undercoverage for both lists
         if daily_demand_sum > 0:
             relative_undercover1 = daily_sum1 / daily_demand_sum
             relative_undercover2 = daily_sum2 / daily_demand_sum
         else:
-            relative_undercover1 = relative_undercover2 = 0  # oder eine andere Regel, wenn der Demand 0 ist
+            relative_undercover1 = relative_undercover2 = 0  # or another rule if demand is 0
 
         daily_relative_undercover1.append(relative_undercover1)
         daily_relative_undercover2.append(relative_undercover2)
@@ -225,9 +225,9 @@ def plot_relative_undercover_dual(ls1, ls2, demand_dict, days, shifts, pt, filen
     bars2 = plt.bar(x + width / 2, daily_relative_undercover2, width, color=colors[1], alpha=0.7,
                     label='Machine-Like Scheduling Approach')
 
-    # Verschiebe die Achsenbeschriftungen nach unten
-    plt.xlabel('Days', fontsize=14.5, labelpad=15)  # labelpad erhöht den Abstand zur Achse
-    plt.ylabel('Relative Undercoverage', fontsize=14.5, labelpad=15)  # labelpad erhöht den Abstand zur Achse
+    # Move axis labels down
+    plt.xlabel('Days', fontsize=14.5, labelpad=15)  # labelpad increases distance to axis
+    plt.ylabel('Relative Undercoverage', fontsize=14.5, labelpad=15)  # labelpad increases distance to axis
 
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks(x)
@@ -250,7 +250,7 @@ def plot_relative_undercover_dual(ls1, ls2, demand_dict, days, shifts, pt, filen
     legend_margin = 0.15 * max_height
     plt.ylim(top=max_height + legend_margin)
 
-    # Erstelle die Legende mit dünnerem Rahmen
+    # Create legend with thinner frame
     legend = plt.legend(loc='upper left', bbox_to_anchor=(0.02, 0.98), ncol=1, frameon=True, edgecolor='black',
                         facecolor='white', framealpha=1, fontsize=14.5)  # Set font size to match axis labels
     legend.get_frame().set_linewidth(0.5)
@@ -261,7 +261,7 @@ def plot_relative_undercover_dual(ls1, ls2, demand_dict, days, shifts, pt, filen
     if filename_suffix:
         base_filename += f'_{filename_suffix}'
 
-    # Speichern als .eps Datei
+    # Save as .eps file
     plt.savefig(f'images/undercover/{base_filename}.svg', format='svg', bbox_inches='tight')
     plt.show()
 
