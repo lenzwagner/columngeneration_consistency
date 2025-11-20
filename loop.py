@@ -4,6 +4,7 @@ from cg_naive import column_generation_naive
 from Utils.Plots.plots import *
 from Utils.aggundercover import *
 from datetime import *
+from Utils.demand import *
 import time
 
 # DataFrame
@@ -22,9 +23,9 @@ start_time = time.time()
 # Loop
 for epsilon in [0.06]:
     for chi in [3]:
-        for len_I in [50]:
-            for pattern in ['Low','Medium','High']:
-                for scenario in range(1, 26):
+        for len_I in [25]:
+            for pattern in ['Low']:
+                for scenario in range(1, 2):
                     if pattern == 'Medium':
                         prob = 1.0
                     elif pattern == 'High':
@@ -33,7 +34,7 @@ for epsilon in [0.06]:
                         prob = 0.9
 
                     # Data
-                    T = list(range(1, 29))
+                    T = list(range(1, 8))
                     I = list(range(1, len_I + 1))
                     K = [1, 2, 3]
 
@@ -43,8 +44,8 @@ for epsilon in [0.06]:
                         'K': K + [np.nan] * (max(len(I), len(T), len(K)) - len(K))
                     })
 
-                    demand_dict = generate_dict_from_excel('data/demand_scenarios.xlsx', len(I), pattern, scenario=1)
-                    df_demand = pd.read_excel('data/data_demand.xlsx', engine='openpyxl')
+                    demand_dict2 = generate_dict_from_excel('data/demand_scenarios.xlsx', len(I), pattern, scenario)
+                    demand_dict = demand_dict_fifty_min(len(T), prob, len(I), 2, 0.25)
                     eps = epsilon
 
                     print(f"")
@@ -108,8 +109,8 @@ for epsilon in [0.06]:
                         'perf_norm_naive': perfloss_norm_n,
                         'understaffing_naive': understaffing_n,
                         'understaffing_norm_naive': understaffing_norm_n,
-                        'shift_undercover_naive': consistency_n,
-                        'shift_undercover_behaviour': consistency_n,
+                        'shift_undercover_naive': shift_undercover_naive,
+                        'shift_undercover_behaviour': shift_undercover_behaviour,
                         'perf_list_behaviour': ls_p_behavior,
                         'perf_list_naive': perf_ls_n,
                         'cons_list_behaviour': ls_sc_behav,
@@ -120,7 +121,6 @@ for epsilon in [0.06]:
 
                     results = pd.concat([results, result], ignore_index=True)
 
-results.to_csv('results/Results.xlsx', index=False)
 results.to_excel(f'results/Results_{datetime.now().strftime("%d_%m_%Y_%H-%M")}.xlsx', index=False)
 
 print(f"Total execution time: {time.time() - start_time:.2f} seconds")

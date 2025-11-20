@@ -295,6 +295,7 @@ class MasterProblem:
             self.doctors_cumulative_multiplied.append(self.total_sum)
             self.sum_all_doctors += self.total_sum
 
+            print('Test', len(cumulative_total),cumulative_total, len(self.multiplied_values1), self.multiplied_values1, sep ="\n")
             cumulative_total = [cumulative_total[j] + self.multiplied_values1[j] for j in range(len(cumulative_total))]
 
         undercoverage = u_results + self.sum_all_doctors

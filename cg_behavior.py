@@ -212,10 +212,19 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
     sol = master.printLambdas()
 
     ls_p_d = plotPerformanceList(P_schedules, sol)
-
+    print('LS_P', len(ls_p_d))
+    print(P_schedules)
     ls_sc = plotPerformanceList(Cons_schedules, sol)
+    print('LS_SC', len(ls_sc))
+    print(Cons_schedules)
     ls_p = plotPerformanceList(Perf_schedules, sol)
+    print('LS_PERF', len(ls_p))
+    print(Perf_schedules)
     ls_r = process_recovery(ls_sc, chi, len(T))
+    ls_r2 = plotPerformanceList(Recovery_schedules, sol)
+    print('LS_R', len(ls_r))
+    print('LS_R2', len(ls_r2))
+    print(Recovery_schedules)
 
     final_itr = itr
 
