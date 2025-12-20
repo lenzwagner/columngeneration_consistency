@@ -23,7 +23,6 @@ def generate_dict_from_excel(file_path, value_I, pattern, scenario):
 import math
 def evaluate_inequality(lst, T, I_given=None):
     # Determine I
-    print('I_given', I_given, T)
     if I_given is None:
         I = math.ceil(len(lst) / T)
     else:

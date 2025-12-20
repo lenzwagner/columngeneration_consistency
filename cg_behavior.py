@@ -65,7 +65,6 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
     # Retrieve dual values
     duals_i0 = master.getDuals_i()
     duals_ts0 = master.getDuals_ts()
-    print(f"{duals_i0, duals_ts0}")
 
     # Start time count
     t0 = time.time()
@@ -200,9 +199,6 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
     ls_perf = [round(x, 2) for x in plotPerformanceList(Perf_schedules, master.printLambdas())]
     ls_x = [1.0 if x > 0 else 0.0 for x in ls_perf]
     ls_rec = [1.0 if x > 0.5 else 0.0 for x in plotPerformanceList(Recovery_schedules, master.printLambdas())]
-
-    print('Fly_1')
-    print(ls_p, ls_sc, ls_perf, ls_x, ls_rec, sep="\n")
 
     # Inequality
     L_perf = [x * (1 - p) for x, p in zip(ls_x, ls_perf)]

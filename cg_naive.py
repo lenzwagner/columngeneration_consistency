@@ -58,7 +58,7 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
     # Retrieve dual values
     duals_i0 = master.getDuals_i()
     duals_ts0 = master.getDuals_ts()
-    #print(f"{duals_i0, duals_ts0}")
+    ##print(f"{duals_i0, duals_ts0}")
 
     # Start time count
     t0 = time.time()
@@ -125,7 +125,7 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
 
         # Update previous_reduced_cost for the next iteration
         previous_reduced_cost = reducedCost
-        print("*{:^{output_len}}*".format(f"Reduced Costs in Iteration {itr}: {reducedCost}", output_len=output_len))
+        #print("*{:^{output_len}}*".format(f"Reduced Costs in Iteration {itr}: {reducedCost}", output_len=output_len))
 
         # Increase latest used iteration
         last_itr = itr + 1
@@ -154,7 +154,7 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
         timeHist.clear()
 
         if not modelImprovable:
-            print("*" * (output_len + 2))
+            #print("*" * (output_len + 2))
             break
 
     if modelImprovable and itr == max_itr:
@@ -168,11 +168,11 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
 
     status = master.model.Status
     if status in (gu.GRB.INF_OR_UNBD, gu.GRB.INFEASIBLE, gu.GRB.UNBOUNDED):
-        #print("The model cannot be solved because it is infeasible or unbounded")
+        ##print("The model cannot be solved because it is infeasible or unbounded")
         gu.sys.exit(1)
 
     if status != gu.GRB.OPTIMAL:
-        #print(f"Optimization was stopped with status {status}")
+        ##print(f"Optimization was stopped with status {status}")
         gu.sys.exit(1)
 
 
@@ -187,20 +187,20 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
     undercoverage_, understaffing_, perfloss_, consistency_, consistency_norm_, undercoverage_norm_, understaffing_norm_, perfloss_norm_, ls_perf, cumulative_total_ = master.calc_naive(ls_perf_, ls_sc, ls_rec, epsi, scale)
 
     undercoverage_naive = master.getUndercoverage()
-    print(ls_p, ls_sc, ls_perf, ls_x, ls_rec, sep="\n")
+    #print(ls_p, ls_sc, ls_perf, ls_x, ls_rec, sep="\n")
     # Print each value with description
-    print("Undercoverage:", undercoverage_)
-    print("Understaffing:", understaffing_)
-    print("Performance loss:", perfloss_)
-    print("Consistency:", consistency_)
-    print("Normalized consistency:", consistency_norm_)
-    print("Normalized undercoverage:", undercoverage_norm_)
-    print("Normalized understaffing:", understaffing_norm_)
-    print("Normalized performance loss:", perfloss_norm_)
-    print("Performance local search:", ls_perf)
-    print("Cumulative total:", cumulative_total_)
+    #print("Undercoverage:", undercoverage_)
+    #print("Understaffing:", understaffing_)
+    #print("Performance loss:", perfloss_)
+    #print("Consistency:", consistency_)
+    #print("Normalized consistency:", consistency_norm_)
+    #print("Normalized undercoverage:", undercoverage_norm_)
+    #print("Normalized understaffing:", understaffing_norm_)
+    #print("Normalized performance loss:", perfloss_norm_)
+    #print("Performance local search:", ls_perf)
+    #print("Cumulative total:", cumulative_total_)
     cumulative_with_naive = [cumulative_total_[j] + undercoverage_naive[j] for j in range(len(cumulative_total_))]
-    print("Cumulative total + naive undercoverage:", cumulative_with_naive)
+    #print("Cumulative total + naive undercoverage:", cumulative_with_naive)
 
     # Inequality
     L_perf = [x * (1 - p) for x, p in zip(ls_x, ls_perf)]

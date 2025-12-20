@@ -25,11 +25,11 @@ max_itr, output_len, mue, threshold = 200, 98, 1e-4, 6e-5
 start_time = time.time()
 
 # Loop
-for epsilon in [0.06]:
-    for chi in [3]:
-        for len_I in [7]:
-            for pattern in ['Low']:
-                for scenario in range(1, 2):
+for epsilon in [i / 100 for i in range(0, 11)]:
+    for chi in [i  for i in range(1, 8)]:
+        for len_I in [50, 100, 150]:
+            for pattern in ['Low', 'Medium', 'High']:
+                for scenario in range(1, 26):
                     if pattern == 'Medium':
                         prob = 1.0
                     elif pattern == 'High':
@@ -38,7 +38,7 @@ for epsilon in [0.06]:
                         prob = 0.9
 
                     # Data
-                    T = list(range(1, 8))
+                    T = list(range(1, 29))
                     I = list(range(1, len_I + 1))
                     K = [1, 2, 3]
 
@@ -49,9 +49,7 @@ for epsilon in [0.06]:
                     })
 
                     random.seed = 2
-                    demand_dict2 = generate_dict_from_excel('data/demand_scenarios.xlsx', len(I), pattern, scenario=1)
-                    demand_dict = {(1, 1): 3, (1, 2): 1, (1, 3): 3, (2, 1): 2, (2, 2): 2, (2, 3): 1, (3, 1): 1, (3, 2): 2, (3, 3): 1, (4, 1): 3, (4, 2): 1, (4, 3): 2, (5, 1): 1, (5, 2): 3, (5, 3): 2, (6, 1): 1, (6, 2): 4, (6, 3): 1, (7, 1): 1, (7, 2): 3, (7, 3): 2}
-                    print(demand_dict)
+                    demand_dict = generate_dict_from_excel('data/demand_scenarios.xlsx', len(I), pattern, scenario=1)
                     eps = epsilon
 
                     print(f"")
@@ -61,7 +59,6 @@ for epsilon in [0.06]:
                     ## Column Generation
                     # Bevaior
                     print('Doing behaviour')
-
                     (undercoverage_behavior, understaffing_behavior, perfloss_behavior, consistency_behavior, consistency_norm_behavior, undercoverage_norm_behavior, understaffing_norm_behavior,
                      perfloss_norm_behavior, final_obj_behavior, final_lb, itr, lagrangeB, gap, time_sps, time_rmp, time_ip, ls_p_behavior, ls_sc_behavior, ls_perf_behavior, ls_x_behavior,
                      ls_r_behavior, undercoverage_per_shift_behavior, results_ineq_sc_behavior, spread_sc_behavior, load_share_sc_behavior, gini_sc_behavior, results_ineq_perf_behavior,
