@@ -38,7 +38,7 @@ demand_dict = demand_dict_fifty(len(T), prob, len_I, middle_shift=2)
 eps = epsilon
 
 time_cg_init = 2
-max_itr = 29
+max_itr = 100
 output_len = 98
 threshold = 6e-5
 time_cg = 7200
@@ -103,7 +103,7 @@ lab_itr = result_lab[10]
 print(f"   Labeling Result: obj={lab_obj:.4f}, iterations={lab_itr}, time={lab_time:.2f}s")
 
 # Optional: Direct MIP comparison (without CG)
-run_direct_mip = False  # Set to True to enable
+run_direct_mip = True  # Set to True to enable
 direct_mip_obj = None
 if run_direct_mip:
     print("\n[3] Running Direct MIP (without CG)...")

@@ -169,8 +169,9 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
                 perf_vals = {(k[0], k[1]): round(v, 4) for k, v in Schedules.items() if v > 0.5}
                 print(f"[{sp_solver.upper()}] Column with perf: {perf_vals}")
             
-            master.addColumn(itr, Schedules)
+            # Add lambda variable first, then set coefficients
             master.addLambda(itr)
+            master.addColumn(itr, Schedules)
             master.updateModel()
             modelImprovable = True
             
