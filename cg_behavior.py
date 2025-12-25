@@ -3,33 +3,44 @@ import time
 
 from masterproblem import *
 from subproblem import *
+from subproblem_factory import create_subproblem
 from Utils.gcutil import *
 from Utils.compactsolver import *
 
-def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi, threshold, time_cg, I, T, K, scale):
+def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi, threshold, time_cg, I, T, K, scale, sp_solver='mip', start_values=None, save_lp=False):
     # **** Column Generation ****
     # Prerequisites
     modelImprovable = True
 
-    # Get Starting Solutions
-    problem_start = Problem(data, demand_dict, eps, Min_WD_i, Max_WD_i, chi)
-    problem_start.buildLinModel()
-    problem_start.model.Params.MIPFocus = 1
-    problem_start.model.Params.Heuristics = 1
-    problem_start.model.Params.RINS = 10
-    problem_start.model.Params.TimeLimit = time_cg_init
-    problem_start.model.update()
-    problem_start.model.optimize()
+    # Get Starting Solutions (or use provided ones)
+    if start_values is None:
+        problem_start = Problem(data, demand_dict, eps, Min_WD_i, Max_WD_i, chi)
+        problem_start.buildLinModel()
+        problem_start.model.Params.MIPFocus = 1
+        problem_start.model.Params.Heuristics = 1
+        problem_start.model.Params.RINS = 10
+        problem_start.model.Params.TimeLimit = time_cg_init
+        problem_start.model.update()
+        problem_start.model.optimize()
 
-    # Schedules
-    # Create
-    start_values_perf = {(t, s): problem_start.perf[1, t, s].x for t in T for s in K}
-    start_values_p = {(t): problem_start.p[1, t].x for t in T}
-    start_values_x = {(t, s): problem_start.x[1, t, s].x for t in T for s in K}
-    start_values_c = {(t): problem_start.sc[1, t].x for t in T}
-    start_values_r = {(t): problem_start.r[1, t].x for t in T}
-    start_values_eup = {(t): problem_start.e[1, t].x for t in T}
-    start_values_elow = {(t): problem_start.b[1, t].x for t in T}
+        # Schedules
+        # Create
+        start_values_perf = {(t, s): problem_start.perf[1, t, s].x for t in T for s in K}
+        start_values_p = {(t): problem_start.p[1, t].x for t in T}
+        start_values_x = {(t, s): problem_start.x[1, t, s].x for t in T for s in K}
+        start_values_c = {(t): problem_start.sc[1, t].x for t in T}
+        start_values_r = {(t): problem_start.r[1, t].x for t in T}
+        start_values_eup = {(t): problem_start.e[1, t].x for t in T}
+        start_values_elow = {(t): problem_start.b[1, t].x for t in T}
+    else:
+        # Use provided start values
+        start_values_perf = start_values['perf']
+        start_values_p = start_values['p']
+        start_values_x = start_values['x']
+        start_values_c = start_values['c']
+        start_values_r = start_values['r']
+        start_values_eup = start_values['eup']
+        start_values_elow = start_values['elow']
 
     # Initialize iterations
     itr = 0
@@ -94,7 +105,7 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
         modelImprovable = False
 
         # Build SP
-        subproblem = Subproblem(duals_i, duals_ts, data, 1, itr, eps, Min_WD_i, Max_WD_i, chi)
+        subproblem = create_subproblem(sp_solver, duals_i, duals_ts, data, 1, itr, eps, Min_WD_i, Max_WD_i, chi)
         subproblem.buildModel()
 
         # Save time to solve SP
@@ -132,6 +143,17 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
         # Update previous_reduced_cost for the next iteration
         previous_reduced_cost = reducedCost
         print("*{:^{output_len}}*".format(f"Reduced Costs in Iteration {itr}: {reducedCost}", output_len=output_len))
+        
+        # Print duals (rounded to 2 decimals)
+        duals_i_rounded = round(duals_i, 2)
+        duals_ts_rounded = {k: round(v, 2) for k, v in duals_ts.items()}
+        print("*{:^{output_len}}*".format(f"Duals_i: {duals_i_rounded}", output_len=output_len))
+        print("*{:^{output_len}}*".format(f"Duals_ts: {duals_ts_rounded}", output_len=output_len))
+        
+        # Print schedule found
+        sched = subproblem.getNewSchedule()
+        sched_list = sorted([(k[0], k[1]) for k, v in sched.items() if v > 0.5])
+        print("*{:^{output_len}}*".format(f"Schedule: {sched_list}", output_len=output_len))
 
         # Increase latest used iteration
         last_itr = itr + 1
@@ -139,10 +161,24 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
         # Generate and add columns with reduced cost
         if reducedCost < -threshold:
             Schedules = subproblem.getNewSchedule()
+            col_list = sorted([(k[0], k[1]) for k, v in Schedules.items() if v > 0.5])
+            print(f"[{sp_solver.upper()}] Adding column: {col_list}")
+            
+            # For labeling, also print performance values
+            if sp_solver == 'labeling':
+                perf_vals = {(k[0], k[1]): round(v, 4) for k, v in Schedules.items() if v > 0.5}
+                print(f"[{sp_solver.upper()}] Column with perf: {perf_vals}")
+            
             master.addColumn(itr, Schedules)
             master.addLambda(itr)
             master.updateModel()
             modelImprovable = True
+            
+            # Save LP if debugging enabled
+            if save_lp:
+                import os
+                os.makedirs("debug_models", exist_ok=True)
+                master.model.write(f"debug_models/mp_{sp_solver}_iter{itr}.lp")
 
         # Update Model
         master.updateModel()

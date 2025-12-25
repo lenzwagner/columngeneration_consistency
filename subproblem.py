@@ -99,8 +99,9 @@ class Subproblem:
             for s in range(t + 1, t + self.Days_Off):
                 self.model.addLConstr(1 + self.y[t] >= self.y[t - 1] + self.y[s])
         for k1, k2 in self.F_S:
-            for t in range(1, len(self.days)):
-                self.model.addLConstr(self.x[t, k1] + self.x[t + 1, k2] <= 1)
+            if k1 in self.shifts and k2 in self.shifts:
+                for t in range(1, len(self.days)):
+                    self.model.addLConstr(self.x[t, k1] + self.x[t + 1, k2] <= 1)
         for t in range(1 + self.chi, len(self.days) + 1):
             self.model.addLConstr(1 <= gu.quicksum(
                 self.sc[j] for j in range(t - self.chi, t+1)) + self.r[t])
@@ -154,6 +155,12 @@ class Subproblem:
                 self.model.addLConstr(
                     gu.quicksum(self.y[u] for u in range(t + 1, t + self.Min_WD + 1)) >= self.Min_WD * (
                             self.y[t + 1] - self.y[t]))
+            
+            # Constraint for start of horizon (t=0 transition to y[1])
+            # If y[1]=1, must work Min_WD days
+            if len(self.days) >= self.Min_WD:
+                self.model.addLConstr(
+                    gu.quicksum(self.y[u] for u in range(1, 1 + self.Min_WD)) >= self.Min_WD * self.y[1])
         self.model.update()
 
     def generateObjective(self):
@@ -197,7 +204,7 @@ class Subproblem:
             self.model.Params.TimeLimit = timeLimit
             self.model.Params.Threads = 0
             self.model.Params.OutputFlag = 0
-            self.model.Params.MIPGap = 0.001
+            self.model.Params.MIPGap = 0.00001
             self.model.optimize()
         except gu.GurobiError as e:
             print('Error code ' + str(e.errno) + ': ' + str(e))

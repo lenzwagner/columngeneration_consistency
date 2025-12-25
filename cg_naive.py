@@ -1,9 +1,10 @@
 from masterproblem import *
 from subproblem import *
+from subproblem_factory import create_subproblem
 from Utils.gcutil import *
 from Utils.compactsolver import *
 
-def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi, threshold, time_cg, I, T, K, epsi, scale):
+def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi, threshold, time_cg, I, T, K, epsi, scale, sp_solver='mip'):
     # **** Column Generation ****
     # Prerequisites
     modelImprovable = True
@@ -88,12 +89,15 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
         modelImprovable = False
 
         # Build SP
-        subproblem = Subproblem(duals_i, duals_ts, data, 1, itr, eps, Min_WD_i, Max_WD_i, 0)
+        subproblem = create_subproblem(sp_solver, duals_i, duals_ts, data, 1, itr, eps, Min_WD_i, Max_WD_i, 0)
         subproblem.buildModel()
 
         # Save time to solve SP
         sub_start_time = time.time()
-        if previous_reduced_cost < -0.001:
+        if sp_solver.lower() == 'dp':
+            print("*{:^{output_len}}*".format(f"Solving SP with DP in Iteration {itr}", output_len=output_len))
+            subproblem.solveModelOpt(time_cg)
+        elif previous_reduced_cost < -0.001:
             print("*{:^{output_len}}*".format(f"Use MIP-Gap > 0 in Iteration {itr}", output_len=output_len))
             subproblem.solveModelNOpt(time_cg)
         else:
