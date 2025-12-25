@@ -19,11 +19,11 @@ print("=" * 70)
 # Parameters
 epsilon = 0.05
 chi = 4
-len_I = 20
+len_I = 6
 prob = 1.0
 
 # Data
-T = list(range(1, 11))  # 7 days
+T = list(range(1, 8))  # 7 days
 I = list(range(1, len_I + 1))
 K = [1, 2, 3]
 
@@ -38,7 +38,7 @@ demand_dict = demand_dict_fifty(len(T), prob, len_I, middle_shift=2)
 eps = epsilon
 
 time_cg_init = 2
-max_itr = 100
+max_itr = 300
 output_len = 98
 threshold = 6e-5
 time_cg = 7200

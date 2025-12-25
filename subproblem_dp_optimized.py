@@ -618,32 +618,81 @@ class SubproblemDPNumba:
         n_shifts = len(self.shifts)
         
         if NUMBA_AVAILABLE:
-            states, costs, paths, n_states = forward_pass_numba(
-                n_days, n_shifts, self.duals_flat, self.duals_i,
-                self.epsilon, self.chi, self.omega_max, self.xi,
-                self.Min_WD, self.Max_WD, self.Days_Off,
-                self.suffix_bounds, n_days
-            )
+            # Bidirectional DP disabled - backward_pass needs fixing
+            # TODO: Fix backward_pass_numba state enumeration
+            USE_BIDIR_THRESHOLD = 1000  # Effectively disabled
             
-            if n_states > 0:
-                # Find best cost
-                best_cost = np.min(costs[:n_states])
-                self.objval = best_cost
+            if n_days >= USE_BIDIR_THRESHOLD:
+                # Bidirectional DP: forward to midpoint, backward to midpoint, merge
+                mid_day = n_days // 2
                 
-                # Collect ALL paths with optimal cost (within tolerance)
-                tol = 1e-9
-                self.all_optimal_paths = []
-                for i in range(n_states):
-                    if abs(costs[i] - best_cost) < tol:
-                        self.all_optimal_paths.append(paths[i].copy())
+                # Forward pass: day 0 to mid_day
+                fwd_states, fwd_costs, fwd_paths, n_fwd = forward_pass_numba(
+                    n_days, n_shifts, self.duals_flat, self.duals_i,
+                    self.epsilon, self.chi, self.omega_max, self.xi,
+                    self.Min_WD, self.Max_WD, self.Days_Off,
+                    self.suffix_bounds, mid_day
+                )
                 
-                self.n_optimal = len(self.all_optimal_paths)
-                self.best_path = self.all_optimal_paths[0] if self.all_optimal_paths else None
-                self.status = gu.GRB.OPTIMAL
+                # Backward pass: day n_days to mid_day
+                bwd_states, bwd_costs, bwd_paths, n_bwd = backward_pass_numba(
+                    n_days, n_shifts, self.duals_flat,
+                    self.epsilon, self.chi, self.omega_max, self.xi,
+                    self.Min_WD, self.Max_WD, self.Days_Off,
+                    mid_day
+                )
+                
+                if n_fwd > 0 and n_bwd > 0:
+                    # Merge at midpoint
+                    best_cost, best_path = merge_bidir(
+                        fwd_states, fwd_costs, fwd_paths, n_fwd,
+                        bwd_states, bwd_costs, bwd_paths, n_bwd,
+                        n_days, mid_day
+                    )
+                    
+                    if best_cost < np.inf:
+                        self.objval = best_cost
+                        self.best_path = best_path
+                        self.all_optimal_paths = [best_path.copy()]
+                        self.n_optimal = 1
+                        self.status = gu.GRB.OPTIMAL
+                    else:
+                        # Fallback to full forward pass if no merge found
+                        self._solve_forward_only(n_days, n_shifts)
+                else:
+                    self._solve_forward_only(n_days, n_shifts)
             else:
-                self.objval = float('inf')
-                self.status = gu.GRB.INFEASIBLE
-                self.n_optimal = 0
+                # Standard forward-only DP for smaller horizons
+                self._solve_forward_only(n_days, n_shifts)
+        else:
+            self.objval = float('inf')
+            self.status = gu.GRB.INFEASIBLE
+            self.n_optimal = 0
+
+    def _solve_forward_only(self, n_days, n_shifts):
+        """Standard forward-only DP solve."""
+        states, costs, paths, n_states = forward_pass_numba(
+            n_days, n_shifts, self.duals_flat, self.duals_i,
+            self.epsilon, self.chi, self.omega_max, self.xi,
+            self.Min_WD, self.Max_WD, self.Days_Off,
+            self.suffix_bounds, n_days
+        )
+        
+        if n_states > 0:
+            # Find best cost
+            best_cost = np.min(costs[:n_states])
+            self.objval = best_cost
+            
+            # Collect ALL paths with optimal cost (within tolerance)
+            tol = 1e-9
+            self.all_optimal_paths = []
+            for i in range(n_states):
+                if abs(costs[i] - best_cost) < tol:
+                    self.all_optimal_paths.append(paths[i].copy())
+            
+            self.n_optimal = len(self.all_optimal_paths)
+            self.best_path = self.all_optimal_paths[0] if self.all_optimal_paths else None
+            self.status = gu.GRB.OPTIMAL
         else:
             self.objval = float('inf')
             self.status = gu.GRB.INFEASIBLE
@@ -758,7 +807,10 @@ class SubproblemDPNumba:
         return x
 
     def _reconstruct_state_history(self):
-        """Reconstruct all state variables from the path for correct MP column generation."""
+        """Reconstruct all state variables from the path for correct MP column generation.
+        
+        IMPORTANT: This must match forward_pass_numba exactly!
+        """
         if self.best_path is None:
             return None
         
@@ -771,56 +823,73 @@ class SubproblemDPNumba:
         e_up_history = []   # E upper (shift change at max perf)
         e_low_history = []  # E lower (recovery effect)
         
-        # State variables
-        e = 0  # Performance level (0 = max performance)
-        rho = 0  # Recovery counter (consecutive days without shift change)
-        last_worked_shift = None  # Last shift worked (persists through off days)
+        # State variables - match forward_pass_numba initialization
+        e = 0       # Performance level (e in DP)
+        rho = 0     # Recovery counter (rho in DP)
+        last_worked = 0  # Last worked shift (0 means never worked)
         
         for d_idx in range(n_days):
             shift = int(self.best_path[d_idx + 1])  # +1 because best_path[0] is dummy
             
             if shift > 0:  # Working day
-                # Check for shift change
-                if last_worked_shift is not None and last_worked_shift != shift:
-                    sc = 1  # Shift change
-                    # Performance level increases on shift change
-                    e = min(e + 1, self.omega_max)
-                    rho = 0  # Reset recovery counter
-                else:
-                    sc = 0  # No shift change
-                    # Check for recovery (chi consecutive days same shift)
-                    if rho >= self.chi:
-                        # Recovery: performance improves
-                        if e > 0:
-                            e = e - 1
-                            r = 1
-                        else:
-                            r = 0
-                    else:
-                        r = 0
-                    rho += 1
+                # Shift change: EXACTLY as in forward_pass_numba line 162
+                # c_new = 1 if (last_worked > 0 and last_worked != shift) else 0
+                c_new = 1 if (last_worked > 0 and last_worked != shift) else 0
                 
-                last_worked_shift = shift
+                # Recovery counter update: EXACTLY as in forward_pass_numba line 164
+                # new_rho = rho + 1 if c_new == 0 else 0
+                new_rho = rho + 1 if c_new == 0 else 0
                 
-                # Calculate performance value
-                p = 1.0 - self.epsilon * e
+                # Recovery flag: EXACTLY as in forward_pass_numba line 165
+                # r_new = 1 if new_rho >= chi + 1 else 0
+                r_new = 1 if new_rho >= self.chi + 1 else 0
+                
+                # New e (performance level): EXACTLY as in forward_pass_numba line 166
+                # new_e = max(0, min(e + c_new - r_new, omega_max))
+                new_e = max(0, min(e + c_new - r_new, self.omega_max))
+                
+                # Performance value: EXACTLY as in compute_performance_numba
+                # p = 1.0 - epsilon * e - xi * kappa (where kappa = 1 if e >= omega_max)
+                kappa = 1 if new_e >= self.omega_max else 0
+                p = 1.0 - self.epsilon * new_e - self.xi * kappa
+                
+                # Update state for next iteration
+                e = new_e
+                rho = new_rho
+                last_worked = shift
                 
                 # E indicators
-                e_up = 1.0 if sc == 1 and e > 0 else 0.0
-                e_low = 1.0 if (r == 1 if 'r' in dir() else False) else 0.0
+                e_up = 1.0 if c_new == 1 else 0.0
+                e_low = 1.0 if r_new == 1 else 0.0
+                
+                sc_history.append(c_new)
+                r_history.append(r_new)
                 
             else:  # Day off (shift <= 0)
-                sc = 0
-                r = 0
-                p = 1.0  # Performance doesn't apply on off days
+                # Match forward_pass_numba day off logic (lines 134-143)
+                # new_rho = rho + 1
+                new_rho = rho + 1
+                
+                # Recovery on day off: r_new = 1 if new_rho >= chi + 1 else 0
+                r_new = 1 if new_rho >= self.chi + 1 else 0
+                
+                # new_e = max(0, min(e - r_new, omega_max))
+                new_e = max(0, min(e - r_new, self.omega_max))
+                
+                # Update state
+                e = new_e
+                rho = new_rho
+                # last_worked stays the same on off days
+                
+                p = 0.0  # Not working, performance not used in cost
+                c_new = 0
                 e_up = 0.0
-                e_low = 0.0
-                # rho continues accumulating through off days
-                rho += 1
+                e_low = 1.0 if r_new == 1 else 0.0
+                
+                sc_history.append(0)
+                r_history.append(r_new)
             
             p_history.append(p)
-            sc_history.append(sc)
-            r_history.append(r if 'r' in dir() else 0)
             e_up_history.append(e_up)
             e_low_history.append(e_low)
         
