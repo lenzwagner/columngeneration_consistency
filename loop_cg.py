@@ -28,8 +28,8 @@ start_time = time.time()
 for epsilon in [0.06]:
     for chi in [5]:
         for len_I in [50]:
-            for pattern in [ 'Medium']:
-                for scenario in range(1, 2):
+            for pattern in ['Medium']:
+                for scenario in range(1, 3):
                     if pattern == 'Medium':
                         prob = 1.0
                     elif pattern == 'High':
@@ -49,28 +49,33 @@ for epsilon in [0.06]:
                     })
 
                     random.seed = 2
-                    demand_dict = generate_dict_from_excel('data/demand_scenarios.xlsx', len(I), pattern, scenario=1)
+                    demand_dict = generate_dict_from_excel('data/demand_scenarios.xlsx', len(I), pattern, scenario=scenario)
+
                     eps = epsilon
 
                     print(f"")
                     print(f"Iteration: Eps: {epsilon} - Chi: {chi} - I: {len(I)} - Pattern: {pattern} - K: {scenario}")
                     print(f"")
 
-                    ## Column Generation
-                    # Bevaior
-                    print('Doing behaviour')
-                    (undercoverage_behavior, understaffing_behavior, perfloss_behavior, consistency_behavior, consistency_norm_behavior, undercoverage_norm_behavior, understaffing_norm_behavior,
-                     perfloss_norm_behavior, final_obj_behavior, final_lb, itr, lagrangeB, gap, time_sps, time_rmp, time_ip, ls_p_behavior, ls_sc_behavior, ls_perf_behavior, ls_x_behavior,
-                     ls_r_behavior, undercoverage_per_shift_behavior, results_ineq_sc_behavior, spread_sc_behavior, load_share_sc_behavior, gini_sc_behavior, results_ineq_perf_behavior,
-                     spread_perf_behavior, load_share_perf_behavior, gini_perf_behavior, shift_blocks_behavior) = column_generation_behavior(
+                    ## Column Generation - CG+bidir (Labeling subproblem)
+                    print('Doing behaviour with CG+Labeling (bidir SP)')
+                    t0_bidir = time.time()
+                    (undercoverage_behavior, understaffing_behavior, perfloss_behavior, consistency_behavior, 
+                     consistency_norm_behavior, undercoverage_norm_behavior, understaffing_norm_behavior,
+                     perfloss_norm_behavior, final_obj_behavior, final_lb, itr, lagrangeB, gap, time_sps, time_rmp, 
+                     time_ip, ls_p_behavior, ls_sc_behavior, ls_perf_behavior, ls_x_behavior,
+                     ls_r_behavior, undercoverage_per_shift_behavior, results_ineq_sc_behavior, spread_sc_behavior, 
+                     load_share_sc_behavior, gini_sc_behavior, results_ineq_perf_behavior,
+                     spread_perf_behavior, load_share_perf_behavior, gini_perf_behavior, 
+                     shift_blocks_behavior) = column_generation_behavior(
                         data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi,
-                                                threshold, time_cg, I, T, K, prob
+                                                threshold, time_cg, I, T, K, prob, sp_solver='labeling_bidir'
                     )
+                    time_bidir = time.time() - t0_bidir
+                    print(f'  --> CG+bidir: obj={final_obj_behavior:.2f}, iter={itr}, gap={gap:.2f}%, time={time_bidir:.1f}s')
 
-
-
-                    # Naive
-                    print('Doing naive')
+                    # Naive (with bidir solver)
+                    print('Doing naive with labeling_bidir')
                     (
                     undercoverage_naive, understaffing_naive, perfloss_naive, consistency_naive, consistency_norm_naive,
                     undercoverage_norm_naive, understaffing_norm_naive,
@@ -78,7 +83,7 @@ for epsilon in [0.06]:
                     ls_r_naive, undercoverage_per_shift_naive, results_ineq_sc_naive, spread_sc_naive,
                     load_share_sc_naive, gini_sc_naive, results_ineq_perf_naive,
                     spread_perf_naive, load_share_perf_naive, gini_perf_naive, shift_blocks_naive) = column_generation_naive(data, demand_dict, 0, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi,
-                                                threshold, time_cg, I, T, K, eps, prob)
+                                                threshold, time_cg, I, T, K, eps, prob, sp_solver='labeling_bidir')
 
 
                     shift_undercover_behavior = create_dict_from_list(undercoverage_per_shift_behavior, len(T), len(K))
@@ -112,6 +117,7 @@ for epsilon in [0.06]:
                         'time_sp': round(time_sps, 3),
                         'time_rmp': round(time_rmp, 3),
                         'time_ip': round(time_ip, 3),
+                        'time_total': round(time_bidir, 3),
                         'undercover_behavior': undercoverage_behavior,
                         'undercover_norm_behavior': undercoverage_norm_behavior,
                         'cons_behavior': consistency_behavior,
@@ -166,4 +172,15 @@ for epsilon in [0.06]:
 
 results.to_excel(f'results/Results_{datetime.now().strftime("%d_%m_%Y_%H-%M")}.xlsx', index=False)
 
-print(f"Total execution time: {time.time() - start_time:.2f} seconds")
+print(results)
+print(f"")
+
+print(f"\nTotal execution time: {time.time() - start_time:.2f} seconds")
+
+# Summary
+print("\n" + "=" * 80)
+print("SUMMARY: CG+bidir Results")
+print("=" * 80)
+for idx, row in results.iterrows():
+    print(f"Scenario {row['scenario']}: obj={row['objval']:.2f}, gap={row['gap']:.2f}%, iter={row['iteration']}, time={row['time_total']:.1f}s")
+print("=" * 80)

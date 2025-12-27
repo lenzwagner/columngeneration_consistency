@@ -710,17 +710,21 @@ class SubproblemDPNumba:
         )
         
         if n_states > 0:
-            # Find best cost
+            # Find best cost across ALL end-states
             best_cost = np.min(costs[:n_states])
             self.objval = best_cost
             
-            # Collect ALL paths with optimal cost (within tolerance)
+            # Collect ALL paths with optimal cost (from ANY end-state)
             tol = 1e-9
             self.all_optimal_paths = []
             for i in range(n_states):
                 if abs(costs[i] - best_cost) < tol:
                     self.all_optimal_paths.append(paths[i].copy())
             
+            # n_optimal = count of distinct paths with best cost
+            # Note: This counts paths across different end-states
+            # Due to dominance pruning, there may be MORE optimal paths
+            # that were pruned (same state, same cost, different schedule)
             self.n_optimal = len(self.all_optimal_paths)
             self.best_path = self.all_optimal_paths[0] if self.all_optimal_paths else None
             self.status = gu.GRB.OPTIMAL
@@ -791,30 +795,48 @@ class SubproblemDPNumba:
         return schedule
 
     def _reconstruct_p_for_path(self, path):
-        """Reconstruct performance values for a specific path."""
+        """Reconstruct performance values for a specific path.
+        
+        According to the model:
+        - P starts at 1.0 (100%)
+        - On off days: P = previous day's value (unless recovery changes e)
+        - On work days: P = 1 - epsilon * e
+        """
         n_days = len(self.days)
         p_values = {}
-        e = 0  # Performance level
-        rho = 0
+        e = 0  # Performance level (effective shift changes)
+        rho = 0  # Recovery counter
         last_worked_shift = None
+        prev_p = 1.0  # Track previous day's p value
         
         for d_idx in range(n_days):
             shift = int(path[d_idx + 1])
             day = self.days[d_idx]
             
-            if shift > 0:
+            if shift > 0:  # Working day
+                # Check shift change
                 if last_worked_shift is not None and last_worked_shift != shift:
                     e = min(e + 1, self.omega_max)
                     rho = 0
                 else:
+                    # Check recovery (chi consecutive days without shift change)
                     if rho >= self.chi and e > 0:
                         e = e - 1
                     rho += 1
+                
                 last_worked_shift = shift
-                p_values[day] = 1.0 - self.epsilon * e
-            else:
+                p = 1.0 - self.epsilon * e
+                p_values[day] = p
+                prev_p = p
+            else:  # Off day
                 rho += 1
-                p_values[day] = 1.0
+                # Check recovery during off days
+                if rho >= self.chi and e > 0:
+                    e = e - 1
+                    rho = 0
+                    prev_p = 1.0 - self.epsilon * e
+                # P on off day = previous day's value
+                p_values[day] = prev_p
         
         return p_values
 
@@ -859,93 +881,83 @@ class SubproblemDPNumba:
     def _reconstruct_state_history(self):
         """Reconstruct all state variables from the path for correct MP column generation.
         
-        IMPORTANT: This must match forward_pass_numba exactly!
+        Matches model constraints:
+        - r_{id} = 1 if sum of c from d-χ to d is 0 (χ+1 consecutive no-SC days)
+        - e_{id} = e_{d-1} + c_{id} + ē_{id} - r_{id} - ê_{id}
+        - p̄_{id} = 1 - ε * e_{id} (daily perf for ALL days)
+        - ē_{id} compensates when e=0 and r=1 would make e negative
         """
         if self.best_path is None:
             return None
         
         n_days = len(self.days)
+        chi = self.chi
         
-        # Initialize histories
-        p_history = []      # Performance values
-        sc_history = []     # Shift change indicators  
-        r_history = []      # Recovery indicators
-        e_up_history = []   # E upper (shift change at max perf)
-        e_low_history = []  # E lower (recovery effect)
-        
-        # State variables - match forward_pass_numba initialization
-        e = 0       # Performance level (e in DP)
-        rho = 0     # Recovery counter (rho in DP)
-        last_worked = 0  # Last worked shift (0 means never worked)
-        
+        # First pass: compute c (shift change) for each day
+        c_history = []
+        last_worked = 0
         for d_idx in range(n_days):
-            shift = int(self.best_path[d_idx + 1])  # +1 because best_path[0] is dummy
-            
+            shift = int(self.best_path[d_idx + 1])
             if shift > 0:  # Working day
-                # Shift change: EXACTLY as in forward_pass_numba line 162
-                # c_new = 1 if (last_worked > 0 and last_worked != shift) else 0
-                c_new = 1 if (last_worked > 0 and last_worked != shift) else 0
-                
-                # Recovery counter update: EXACTLY as in forward_pass_numba line 164
-                # new_rho = rho + 1 if c_new == 0 else 0
-                new_rho = rho + 1 if c_new == 0 else 0
-                
-                # Recovery flag: EXACTLY as in forward_pass_numba line 165
-                # r_new = 1 if new_rho >= chi + 1 else 0
-                r_new = 1 if new_rho >= self.chi + 1 else 0
-                
-                # New e (performance level): EXACTLY as in forward_pass_numba line 166
-                # new_e = max(0, min(e + c_new - r_new, omega_max))
-                new_e = max(0, min(e + c_new - r_new, self.omega_max))
-                
-                # Performance value: EXACTLY as in compute_performance_numba
-                # p = 1.0 - epsilon * e - xi * kappa (where kappa = 1 if e >= omega_max)
-                kappa = 1 if new_e >= self.omega_max else 0
-                p = 1.0 - self.epsilon * new_e - self.xi * kappa
-                
-                # Update state for next iteration
-                e = new_e
-                rho = new_rho
+                c = 1 if (last_worked > 0 and last_worked != shift) else 0
                 last_worked = shift
-                
-                # E indicators
-                e_up = 1.0 if c_new == 1 else 0.0
-                e_low = 1.0 if r_new == 1 else 0.0
-                
-                sc_history.append(c_new)
-                r_history.append(r_new)
-                
-            else:  # Day off (shift <= 0)
-                # Match forward_pass_numba day off logic (lines 134-143)
-                # new_rho = rho + 1
-                new_rho = rho + 1
-                
-                # Recovery on day off: r_new = 1 if new_rho >= chi + 1 else 0
-                r_new = 1 if new_rho >= self.chi + 1 else 0
-                
-                # new_e = max(0, min(e - r_new, omega_max))
-                new_e = max(0, min(e - r_new, self.omega_max))
-                
-                # Update state
-                e = new_e
-                rho = new_rho
-                # last_worked stays the same on off days
-                
-                p = 0.0  # Not working, performance not used in cost
-                c_new = 0
-                e_up = 0.0
-                e_low = 1.0 if r_new == 1 else 0.0
-                
-                sc_history.append(0)
-                r_history.append(r_new)
+            else:
+                c = 0
+            c_history.append(c)
+        
+        # Second pass: compute r based on sum of c from d-χ to d
+        # r_{id} = 0 for d in {1, ..., χ+1} (model:firstrec)
+        # r_{id} = 1 if sum(c from d-χ to d) = 0 (model:r1,r2)
+        r_history = []
+        for d_idx in range(n_days):
+            day = d_idx + 1  # 1-indexed
+            if day <= chi + 1:
+                r = 0  # No recovery in first χ+1 days
+            else:
+                # Sum of c from d-χ to d (inclusive)
+                start = d_idx - chi  # d-χ in 0-indexed
+                sum_c = sum(c_history[start:d_idx + 1])
+                r = 1 if sum_c == 0 else 0
+            r_history.append(r)
+        
+        # Third pass: compute e (effective shift changes) and p̄ (daily perf)
+        p_history = []      # p̄_{id} = 1 - ε * e_{id}
+        e_up_history = []   # ê_{id} (compensation at upper bound)
+        e_low_history = []  # ē_{id} (compensation at lower bound)
+        
+        e = 0  # e_{i1} = 0
+        for d_idx in range(n_days):
+            c = c_history[d_idx]
+            r = r_history[d_idx]
+            
+            # Compute ē (underbar e): compensates when e=0 and r=1
+            # ē_{id} = (1 - f_{d-1}) * (1 - c_{id}) * r_{id}
+            # where f_{d-1} = 1 if e_{d-1} > 0
+            f_prev = 1 if e > 0 else 0
+            e_low = (1 - f_prev) * (1 - c) * r
+            
+            # Compute ê: compensates when e=max and c=1
+            # ê_{id} = c_{id} * e^reach_{d-1}
+            # e^reach = 1 if e = 1/ε
+            e_reach_prev = 1 if e >= self.omega_max else 0
+            e_up = c * e_reach_prev
+            
+            # Update e: e_{id} = e_{d-1} + c + ē - r - ê
+            new_e = e + c + e_low - r - e_up
+            new_e = max(0, min(new_e, self.omega_max))  # Bounds
+            
+            # Daily performance: p̄_{id} = 1 - ε * e_{id}
+            p = 1.0 - self.epsilon * new_e
             
             p_history.append(p)
-            e_up_history.append(e_up)
-            e_low_history.append(e_low)
+            e_up_history.append(float(e_up))
+            e_low_history.append(float(e_low))
+            
+            e = new_e
         
         return {
             'p': p_history,
-            'sc': sc_history,
+            'sc': c_history,
             'r': r_history,
             'e_up': e_up_history,
             'e_low': e_low_history
@@ -1097,16 +1109,140 @@ class SubproblemDPBidir:
         return self.status if self.status else gu.GRB.LOADED
 
     def getNewSchedule(self):
-        return {}
+        """Return performance schedule for MP column generation."""
+        if self.best_path is None:
+            return {}
+        
+        p_values = self._get_p_values()
+        schedule = {}
+        for d_idx, day in enumerate(self.days):
+            for shift in self.shifts:
+                if self.best_path[d_idx + 1] == shift:
+                    schedule[(day, shift, self.itr)] = p_values.get(day, 1.0)
+                else:
+                    schedule[(day, shift, self.itr)] = 0.0
+        return schedule
+
+    def _get_p_values(self):
+        """Reconstruct performance values from path.
+        
+        P on off days = previous day's value (unless recovery changes e)
+        """
+        if self.best_path is None:
+            return {}
+        
+        n_days = len(self.days)
+        p_values = {}
+        e = 0  # Performance level
+        rho = 0
+        last_worked_shift = None
+        prev_p = 1.0  # Track previous day's value
+        
+        for d_idx, day in enumerate(self.days):
+            shift = self.best_path[d_idx + 1]
+            
+            if shift > 0:  # Working
+                # Check shift change
+                if last_worked_shift is not None and shift != last_worked_shift:
+                    e = min(e + 1, self.omega_max)
+                    rho = 0
+                else:
+                    # Check recovery
+                    if rho >= self.chi and e > 0:
+                        e = e - 1
+                    rho += 1
+                
+                # Calculate performance
+                p = 1.0 - e * self.epsilon
+                p_values[day] = p
+                prev_p = p
+                last_worked_shift = shift
+            else:  # Off day
+                rho += 1
+                # Check recovery during off days
+                if rho >= self.chi and e > 0:
+                    e = max(0, e - 1)
+                    rho = 0
+                    prev_p = 1.0 - e * self.epsilon
+                # P = previous day's value
+                p_values[day] = prev_p
+        
+        return p_values
 
     def getOptX(self):
-        return {}
+        """Get binary work indicators."""
+        if self.best_path is None:
+            return {}
+        x = {}
+        for d_idx, day in enumerate(self.days):
+            for shift in self.shifts:
+                x[(day, shift)] = 1.0 if self.best_path[d_idx + 1] == shift else 0.0
+        return x
 
     def getOptP(self):
-        return {}
+        """Get performance values by day."""
+        return self._get_p_values()
 
     def getOptC(self):
-        return {}
+        """Get shift change indicators."""
+        if self.best_path is None:
+            return {}
+        
+        sc = {}
+        last_shift = None
+        for d_idx, day in enumerate(self.days):
+            shift = self.best_path[d_idx + 1]
+            if shift > 0:
+                if last_shift is not None and shift != last_shift:
+                    sc[day] = 1.0
+                else:
+                    sc[day] = 0.0
+                last_shift = shift
+            else:
+                sc[day] = 0.0
+        return sc
 
     def getOptR(self):
-        return {}
+        """Get recovery indicators."""
+        if self.best_path is None:
+            return {}
+        
+        r = {}
+        rho = 0
+        e = 0
+        last_worked_shift = None
+        
+        for d_idx, day in enumerate(self.days):
+            shift = self.best_path[d_idx + 1]
+            
+            if shift > 0:
+                # Check shift change effect
+                if last_worked_shift is not None and shift != last_worked_shift:
+                    if e < self.omega_max:
+                        e += 1
+                    rho = 0
+                
+                r[day] = 0.0
+                last_worked_shift = shift
+                rho = 0
+            else:
+                rho += 1
+                if rho >= self.chi and e > 0:
+                    e -= 1
+                    rho = 0
+                    r[day] = 1.0
+                else:
+                    r[day] = 0.0
+        return r
+
+    def getOptEUp(self):
+        """Get E upper (shift change at max perf)."""
+        return {}  # Not needed for basic analysis
+
+    def getOptElow(self):
+        """Get E lower (recovery effect)."""
+        return {}  # Not needed for basic analysis
+
+    def getOptPerf(self):
+        """Get performance schedule (same as getNewSchedule)."""
+        return self.getNewSchedule()

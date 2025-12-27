@@ -167,15 +167,23 @@ class Subproblem:
         self.model.setObjective(0 - gu.quicksum(self.performance[t, s, self.itr] * self.duals_ts[t, s] for t in self.days for s in self.shifts) - self.duals_i, sense=gu.GRB.MINIMIZE)
 
     def getNewSchedule(self):
+        print(f'perf', self.model.getAttr("X", self.performance))
+        print(f'x', self.model.getAttr("X", self.x))
+        print(f'p', self.model.getAttr("X", self.p))
+        print(f'r', self.model.getAttr("X", self.r))
+        print(f'sc', self.model.getAttr("X", self.sc))
+
         return self.model.getAttr("X", self.performance)
 
     def getOptX(self):
+        print(f'x', self.model.getAttr("X", self.x))
         return self.model.getAttr("X", self.x)
 
     def getOptP(self):
         return self.model.getAttr("X", self.p)
 
     def getOptC(self):
+        print(f'sc', self.model.getAttr("X", self.sc))
         return self.model.getAttr("X", self.sc)
 
     def getOptF(self):
@@ -185,6 +193,7 @@ class Subproblem:
         return self.model.getAttr("X", self.n)
 
     def getOptR(self):
+        print(f'r', self.model.getAttr("X", self.r))
         return self.model.getAttr("X", self.r)
 
     def getOptEUp(self):

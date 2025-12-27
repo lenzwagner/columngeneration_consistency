@@ -131,6 +131,7 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
             value = getattr(subproblem, method)()
             schedule[f"Physician_{index}"].append(value)
 
+
         # Check if SP is solvable
         status = subproblem.getStatus()
         if status != 2:
@@ -138,22 +139,11 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
 
         # Save ObjVal History
         reducedCost = subproblem.model.objval
+        print(f'Red. Cost {reducedCost}')
         objValHistSP.append(reducedCost)
 
         # Update previous_reduced_cost for the next iteration
         previous_reduced_cost = reducedCost
-        print("*{:^{output_len}}*".format(f"Reduced Costs in Iteration {itr}: {reducedCost}", output_len=output_len))
-
-        # Print duals (rounded to 2 decimals)
-        duals_i_rounded = round(duals_i, 2)
-        duals_ts_rounded = {k: round(v, 2) for k, v in duals_ts.items()}
-        print("*{:^{output_len}}*".format(f"Duals_i: {duals_i_rounded}", output_len=output_len))
-        print("*{:^{output_len}}*".format(f"Duals_ts: {duals_ts_rounded}", output_len=output_len))
-
-        # Print schedule found
-        sched = subproblem.getNewSchedule()
-        sched_list = sorted([(k[0], k[1]) for k, v in sched.items() if v > 0.5])
-        print("*{:^{output_len}}*".format(f"Schedule: {sched_list}", output_len=output_len))
 
         # Increase latest used iteration
         last_itr = itr + 1
@@ -161,8 +151,13 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
         # Generate and add columns with reduced cost
         if reducedCost < -threshold:
             Schedules = subproblem.getNewSchedule()
-            col_list = sorted([(k[0], k[1]) for k, v in Schedules.items() if v > 0.5])
-            print(f"[{sp_solver.upper()}] Adding column: {col_list}")
+            
+            # Debug: print schedule and optimal count in first 5 iterations
+            if itr <= 5:
+                col_list = sorted([(k[0], k[1]) for k, v in Schedules.items() if v > 0.5])
+                n_optimal = subproblem.getOptimalCount() if hasattr(subproblem, 'getOptimalCount') else 1
+                print(f"  [ITR {itr}] [{sp_solver.upper()}] Schedule: {col_list}")
+                print(f"  [ITR {itr}] [{sp_solver.upper()}] Optimal end-states: {n_optimal}")
             
             # Add lambda variable first, then set coefficients
             master.addLambda(itr)

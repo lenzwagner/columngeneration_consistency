@@ -606,7 +606,6 @@ def analyze_and_plot_blocks(raw_data, num_workers, num_days, num_shifts, plt_sho
         plt.ylabel("Frequency")
         plt.xticks(range(1, max_val + 1))
         plt.grid(axis='y', alpha=0.5, linestyle='--')
-        plt.savefig('block_histogram.png')
         if plt_show == True:
             plt.show()
     else:
