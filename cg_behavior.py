@@ -143,13 +143,13 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
         # Update previous_reduced_cost for the next iteration
         previous_reduced_cost = reducedCost
         print("*{:^{output_len}}*".format(f"Reduced Costs in Iteration {itr}: {reducedCost}", output_len=output_len))
-        
+
         # Print duals (rounded to 2 decimals)
         duals_i_rounded = round(duals_i, 2)
         duals_ts_rounded = {k: round(v, 2) for k, v in duals_ts.items()}
         print("*{:^{output_len}}*".format(f"Duals_i: {duals_i_rounded}", output_len=output_len))
         print("*{:^{output_len}}*".format(f"Duals_ts: {duals_ts_rounded}", output_len=output_len))
-        
+
         # Print schedule found
         sched = subproblem.getNewSchedule()
         sched_list = sorted([(k[0], k[1]) for k, v in sched.items() if v > 0.5])
@@ -163,11 +163,6 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
             Schedules = subproblem.getNewSchedule()
             col_list = sorted([(k[0], k[1]) for k, v in Schedules.items() if v > 0.5])
             print(f"[{sp_solver.upper()}] Adding column: {col_list}")
-            
-            # For labeling, also print performance values
-            if sp_solver == 'labeling':
-                perf_vals = {(k[0], k[1]): round(v, 4) for k, v in Schedules.items() if v > 0.5}
-                print(f"[{sp_solver.upper()}] Column with perf: {perf_vals}")
             
             # Add lambda variable first, then set coefficients
             master.addLambda(itr)

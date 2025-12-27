@@ -94,8 +94,8 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
 
         # Save time to solve SP
         sub_start_time = time.time()
-        if sp_solver.lower() == 'dp':
-            print("*{:^{output_len}}*".format(f"Solving SP with DP in Iteration {itr}", output_len=output_len))
+        if sp_solver.lower() in ['dp', 'labeling', 'labeling_bidir']:
+            print("*{:^{output_len}}*".format(f"Solving SP with {sp_solver} in Iteration {itr}", output_len=output_len))
             subproblem.solveModelOpt(time_cg)
         elif previous_reduced_cost < -0.001:
             print("*{:^{output_len}}*".format(f"Use MIP-Gap > 0 in Iteration {itr}", output_len=output_len))
@@ -137,8 +137,8 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
         # Generate and add columns with reduced cost
         if reducedCost < -threshold:
             Schedules = subproblem.getNewSchedule()
+            master.addLambda(itr)  # Must be called BEFORE addColumn
             master.addColumn(itr, Schedules)
-            master.addLambda(itr)
             master.updateModel()
             modelImprovable = True
 

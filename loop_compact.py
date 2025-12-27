@@ -19,7 +19,7 @@ start_time = time.time()
 for epsilon in [0.06]:
     for chi in [3]:
         for len_I in [50]:
-            for pattern in ['Low']:
+            for pattern in ['Medium']:
                 for scenario in range(1, 3):
                     if pattern == 'Medium':
                         prob = 1.0

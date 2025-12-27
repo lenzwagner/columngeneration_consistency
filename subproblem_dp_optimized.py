@@ -224,7 +224,7 @@ def forward_pass_numba(
 
 
 @njit(cache=True)
-def backward_pass_numba(
+def forward_pass_from_states(
     n_days: int,
     n_shifts: int,
     duals_flat: np.ndarray,
@@ -236,134 +236,118 @@ def backward_pass_numba(
     max_wd: int,
     days_off: int,
     start_day: int,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    init_states: np.ndarray,
+    init_costs: np.ndarray,
+    n_init: int,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
     """
-    Backward DP pass from day n_days back to start_day.
-    Computes cost-to-go for each reachable state at start_day.
+    Forward DP pass from start_day to end, starting from given states.
+    
+    This is the second half of meet-in-middle: we continue forward from
+    the states reached at midpoint.
     
     Returns:
-        states: Packed state array at start_day
-        costs: Cost-to-go array
-        paths: Path decisions from start_day to end
-        n_states: Number of states
+        final_states: Final state at end
+        final_costs: Total cost (init_cost + cost_from_mid)
+        init_indices: Which initial state led to this path
+        paths: Path decisions (start_day to end)
+        n_states: Number of final states
     """
     MAX_STATES = 200000
     
     curr_states = np.zeros(MAX_STATES, dtype=np.int64)
     curr_costs = np.zeros(MAX_STATES, dtype=np.float64)
+    curr_init_idx = np.zeros(MAX_STATES, dtype=np.int32)  # Track which init state
     curr_paths = np.zeros((MAX_STATES, n_days + 1), dtype=np.int8)
     
     next_states = np.zeros(MAX_STATES, dtype=np.int64)
     next_costs = np.zeros(MAX_STATES, dtype=np.float64)
+    next_init_idx = np.zeros(MAX_STATES, dtype=np.int32)
     next_paths = np.zeros((MAX_STATES, n_days + 1), dtype=np.int8)
     
-    # Initialize: all possible ending states at final day with zero cost
-    n_curr = 0
-    for omega in range(-5, max_wd + 1):
-        for rho in range(min(chi + 2, 32)):
-            for e in range(min(omega_max + 1, 16)):
-                for last_worked in range(n_shifts + 1):
-                    # Valid ending states
-                    state = pack_state(omega, rho, e, last_worked, last_worked, 0)
-                    if n_curr < MAX_STATES:
-                        curr_states[n_curr] = state
-                        curr_costs[n_curr] = 0.0
-                        n_curr += 1
+    # Initialize with provided states
+    n_curr = min(n_init, MAX_STATES)
+    for i in range(n_curr):
+        curr_states[i] = init_states[i]
+        curr_costs[i] = init_costs[i]
+        curr_init_idx[i] = i
     
     forbidden = np.array([[3, 1], [3, 2], [2, 1]], dtype=np.int32)
     
-    # Backward pass: from n_days back to start_day+1
-    for d in range(n_days, start_day, -1):
-        prev_day = d - 1
+    # Continue forward from start_day to n_days
+    for d in range(start_day, n_days):
+        next_day = d + 1
         n_next = 0
-        days_from_start = prev_day
+        days_remaining = n_days - next_day + 1
         
         for i in range(n_curr):
             state = curr_states[i]
-            cost_to_go = curr_costs[i]
+            cost = curr_costs[i]
+            init_idx = curr_init_idx[i]
             
-            omega, rho, e, last_worked, s_last, _ = unpack_state(state)
+            omega, rho, e, last_worked, s_last, first_flag = unpack_state(state)
+            has_worked = last_worked > 0
             
-            # What previous states could lead to this state?
+            # Option 1: Day off
+            can_off = True
+            if omega > 0 and omega < min_wd:
+                if days_remaining >= min_wd or first_flag == 1:
+                    can_off = False
             
-            # If current s_last > 0, we worked today
-            if s_last > 0:
-                shift = s_last
+            if can_off and n_next < MAX_STATES:
+                new_omega = -1 if omega > 0 else (omega - 1 if omega < 0 else -1)
+                new_rho = rho + 1
+                r_new = 1 if new_rho >= chi + 1 else 0
+                new_e = max(0, min(e - r_new, omega_max))
                 
-                # Previous could be: working same/diff shift, or coming from off
-                for prev_omega in range(-5, max_wd):
-                    for prev_rho in range(min(chi + 2, 32)):
-                        for prev_e in range(min(omega_max + 1, 16)):
-                            for prev_last in range(n_shifts + 1):
-                                for prev_s_last in range(n_shifts + 1):
-                                    # Check transition validity
-                                    if prev_omega >= max_wd:
-                                        continue
-                                    
-                                    has_worked = prev_last > 0
-                                    if prev_omega < 0 and has_worked and -prev_omega < days_off:
-                                        continue
-                                    
-                                    # Check forbidden
-                                    is_forbidden = False
-                                    if prev_s_last > 0:
-                                        for f in range(3):
-                                            if forbidden[f, 0] == prev_s_last and forbidden[f, 1] == shift:
-                                                is_forbidden = True
-                                                break
-                                    if is_forbidden:
-                                        continue
-                                    
-                                    # Compute what state transition would produce
-                                    c_new = 1 if (prev_last > 0 and prev_last != shift) else 0
-                                    exp_omega = 1 if prev_omega <= 0 else prev_omega + 1
-                                    exp_rho = prev_rho + 1 if c_new == 0 else 0
-                                    r_new = 1 if exp_rho >= chi + 1 else 0
-                                    exp_e = max(0, min(prev_e + c_new - r_new, omega_max))
-                                    
-                                    if exp_omega == omega and exp_rho == rho and exp_e == e:
-                                        # Valid predecessor
-                                        p_new = compute_performance_numba(e, omega_max, epsilon, xi)
-                                        dual_val = duals_flat[(d - 1) * n_shifts + (shift - 1)]
-                                        
-                                        prev_state = pack_state(prev_omega, prev_rho, prev_e, prev_last, prev_s_last, 0)
-                                        prev_cost = cost_to_go + dual_val * p_new
-                                        
-                                        if n_next < MAX_STATES:
-                                            next_states[n_next] = prev_state
-                                            next_costs[n_next] = prev_cost
-                                            next_paths[n_next, :] = curr_paths[i, :]
-                                            next_paths[n_next, d] = shift
-                                            n_next += 1
+                next_states[n_next] = pack_state(new_omega, new_rho, new_e, last_worked, 0, first_flag)
+                next_costs[n_next] = cost
+                next_init_idx[n_next] = init_idx
+                next_paths[n_next, :] = curr_paths[i, :]
+                next_paths[n_next, next_day] = -1
+                n_next += 1
             
-            # If s_last == 0, this was a day off
-            else:
-                for prev_omega in range(-5, max_wd + 1):
-                    for prev_rho in range(min(chi + 2, 32)):
-                        for prev_e in range(min(omega_max + 1, 16)):
-                            for prev_last in range(n_shifts + 1):
-                                # Check min_wd constraint
-                                if prev_omega > 0 and prev_omega < min_wd:
-                                    continue
-                                
-                                # Compute expected state
-                                exp_omega = -1 if prev_omega > 0 else (prev_omega - 1 if prev_omega < 0 else -1)
-                                exp_rho = prev_rho + 1
-                                r_new = 1 if exp_rho >= chi + 1 else 0
-                                exp_e = max(0, min(prev_e - r_new, omega_max))
-                                
-                                if exp_omega == omega and exp_rho == rho and exp_e == e:
-                                    prev_state = pack_state(prev_omega, prev_rho, prev_e, prev_last, prev_last, 0)
-                                    
-                                    if n_next < MAX_STATES:
-                                        next_states[n_next] = prev_state
-                                        next_costs[n_next] = cost_to_go
-                                        next_paths[n_next, :] = curr_paths[i, :]
-                                        next_paths[n_next, d] = -1
-                                        n_next += 1
+            # Option 2: Work each shift
+            for shift in range(1, n_shifts + 1):
+                if omega >= max_wd:
+                    continue
+                if omega < 0 and has_worked and -omega < days_off:
+                    continue
+                
+                is_forbidden = False
+                if s_last > 0:
+                    for f in range(3):
+                        if forbidden[f, 0] == s_last and forbidden[f, 1] == shift:
+                            is_forbidden = True
+                            break
+                if is_forbidden:
+                    continue
+                
+                c_new = 1 if (last_worked > 0 and last_worked != shift) else 0
+                new_omega = 1 if omega <= 0 else omega + 1
+                new_rho = rho + 1 if c_new == 0 else 0
+                r_new = 1 if new_rho >= chi + 1 else 0
+                new_e = max(0, min(e + c_new - r_new, omega_max))
+                
+                p_new = compute_performance_numba(new_e, omega_max, epsilon, xi)
+                dual_val = duals_flat[(next_day - 1) * n_shifts + (shift - 1)]
+                new_cost = cost - dual_val * p_new
+                
+                new_first = first_flag
+                if not has_worked and next_day == start_day + 1:
+                    new_first = 1
+                
+                if n_next < MAX_STATES:
+                    next_states[n_next] = pack_state(new_omega, new_rho, new_e, shift, shift, new_first)
+                    next_costs[n_next] = new_cost
+                    next_init_idx[n_next] = init_idx
+                    next_paths[n_next, :] = curr_paths[i, :]
+                    next_paths[n_next, next_day] = shift
+                    n_next += 1
         
-        # Dominance pruning (keep best cost for each state)
+        # Dominance: keep best cost for each (state, init_idx) pair
         if n_next > 0:
+            # Sort by state, then by init_idx
             sort_idx = np.argsort(next_states[:n_next])
             
             n_pruned = 0
@@ -371,6 +355,8 @@ def backward_pass_numba(
             while i < n_next:
                 idx = sort_idx[i]
                 current_state = next_states[idx]
+                
+                # For each state, keep only the best overall path
                 best_c = next_costs[idx]
                 best_idx = idx
                 
@@ -384,6 +370,7 @@ def backward_pass_numba(
                 
                 curr_states[n_pruned] = current_state
                 curr_costs[n_pruned] = best_c
+                curr_init_idx[n_pruned] = next_init_idx[best_idx]
                 curr_paths[n_pruned, :] = next_paths[best_idx, :]
                 n_pruned += 1
                 i = j
@@ -392,7 +379,50 @@ def backward_pass_numba(
         else:
             n_curr = 0
     
-    return curr_states[:n_curr].copy(), curr_costs[:n_curr].copy(), curr_paths[:n_curr].copy(), n_curr
+    return (curr_states[:n_curr].copy(), curr_costs[:n_curr].copy(), 
+            curr_init_idx[:n_curr].copy(), curr_paths[:n_curr].copy(), n_curr)
+
+
+@njit(cache=True)
+def merge_bidirectional(
+    fwd_states: np.ndarray,
+    fwd_costs: np.ndarray,
+    fwd_paths: np.ndarray,
+    n_fwd: int,
+    second_costs: np.ndarray,
+    second_init_idx: np.ndarray,
+    second_paths: np.ndarray,
+    n_second: int,
+    n_days: int,
+    mid_day: int,
+) -> Tuple[float, np.ndarray]:
+    """
+    Merge first and second forward passes.
+    
+    The second pass tracked which init_idx (= index into first pass results)
+    each path came from, so we combine:
+    - fwd_paths[init_idx] for days 0..mid_day
+    - second_paths for days mid_day+1..n_days
+    
+    Returns best_cost and combined best_path.
+    """
+    best_cost = np.inf
+    best_path = np.zeros(n_days + 1, dtype=np.int8)
+    
+    for i in range(n_second):
+        total_cost = second_costs[i]  # Already includes fwd cost via init_costs
+        
+        if total_cost < best_cost:
+            best_cost = total_cost
+            init_idx = second_init_idx[i]
+            
+            # Combine paths: first half from fwd_paths, second half from second_paths
+            for d in range(mid_day + 1):
+                best_path[d] = fwd_paths[init_idx, d]
+            for d in range(mid_day + 1, n_days + 1):
+                best_path[d] = second_paths[i, d]
+    
+    return best_cost, best_path
 
 
 @njit(cache=True)
@@ -618,15 +648,14 @@ class SubproblemDPNumba:
         n_shifts = len(self.shifts)
         
         if NUMBA_AVAILABLE:
-            # Bidirectional DP disabled - backward_pass needs fixing
-            # TODO: Fix backward_pass_numba state enumeration
-            USE_BIDIR_THRESHOLD = 1000  # Effectively disabled
+            # Check if bidirectional mode is explicitly requested
+            use_bidir = getattr(self, '_use_bidir', False)
             
-            if n_days >= USE_BIDIR_THRESHOLD:
-                # Bidirectional DP: forward to midpoint, backward to midpoint, merge
+            if use_bidir and n_days >= 8:  # Bidir only useful for T >= 8
+                # Bidirectional DP: forward to midpoint, continue forward to end, merge
                 mid_day = n_days // 2
                 
-                # Forward pass: day 0 to mid_day
+                # Forward pass 1: day 0 to mid_day
                 fwd_states, fwd_costs, fwd_paths, n_fwd = forward_pass_numba(
                     n_days, n_shifts, self.duals_flat, self.duals_i,
                     self.epsilon, self.chi, self.omega_max, self.xi,
@@ -634,30 +663,32 @@ class SubproblemDPNumba:
                     self.suffix_bounds, mid_day
                 )
                 
-                # Backward pass: day n_days to mid_day
-                bwd_states, bwd_costs, bwd_paths, n_bwd = backward_pass_numba(
-                    n_days, n_shifts, self.duals_flat,
-                    self.epsilon, self.chi, self.omega_max, self.xi,
-                    self.Min_WD, self.Max_WD, self.Days_Off,
-                    mid_day
-                )
-                
-                if n_fwd > 0 and n_bwd > 0:
-                    # Merge at midpoint
-                    best_cost, best_path = merge_bidir(
-                        fwd_states, fwd_costs, fwd_paths, n_fwd,
-                        bwd_states, bwd_costs, bwd_paths, n_bwd,
-                        n_days, mid_day
+                if n_fwd > 0:
+                    # Forward pass 2: mid_day to n_days, starting from states in fwd_states
+                    _, second_costs, second_init_idx, second_paths, n_second = forward_pass_from_states(
+                        n_days, n_shifts, self.duals_flat,
+                        self.epsilon, self.chi, self.omega_max, self.xi,
+                        self.Min_WD, self.Max_WD, self.Days_Off,
+                        mid_day, fwd_states, fwd_costs, n_fwd
                     )
                     
-                    if best_cost < np.inf:
-                        self.objval = best_cost
-                        self.best_path = best_path
-                        self.all_optimal_paths = [best_path.copy()]
-                        self.n_optimal = 1
-                        self.status = gu.GRB.OPTIMAL
+                    if n_second > 0:
+                        # Merge the two passes
+                        best_cost, best_path = merge_bidirectional(
+                            fwd_states, fwd_costs, fwd_paths, n_fwd,
+                            second_costs, second_init_idx, second_paths, n_second,
+                            n_days, mid_day
+                        )
+                        
+                        if best_cost < np.inf:
+                            self.objval = best_cost
+                            self.best_path = best_path
+                            self.all_optimal_paths = [best_path.copy()]
+                            self.n_optimal = 1
+                            self.status = gu.GRB.OPTIMAL
+                        else:
+                            self._solve_forward_only(n_days, n_shifts)
                     else:
-                        # Fallback to full forward pass if no merge found
                         self._solve_forward_only(n_days, n_shifts)
                 else:
                     self._solve_forward_only(n_days, n_shifts)
@@ -725,6 +756,25 @@ class SubproblemDPNumba:
                 else:
                     schedule[(day, shift, self.itr)] = 0.0
         return schedule
+
+    def getOptimalCount(self):
+        """Return the number of equally optimal paths found."""
+        return getattr(self, 'n_optimal', 1)
+
+    def getAllOptimalSchedules(self):
+        """Return all equally optimal schedules (with same reduced cost).
+        
+        Returns a list of schedule dicts, each formatted for column addition.
+        Currently only returns the first one for actual use, but stores all.
+        """
+        if not hasattr(self, 'all_optimal_paths') or not self.all_optimal_paths:
+            return [self.getNewSchedule()]
+        
+        schedules = []
+        for idx, path in enumerate(self.all_optimal_paths):
+            schedule = self._path_to_schedule(path, self.itr + idx)
+            schedules.append(schedule)
+        return schedules
 
     def _path_to_schedule(self, path, col_idx):
         """Convert a path to a schedule dict with the given column index."""

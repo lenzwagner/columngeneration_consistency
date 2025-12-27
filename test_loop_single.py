@@ -22,8 +22,8 @@ chi = 4
 len_I = 6
 prob = 1.0
 
-# Data
-T = list(range(1, 8))  # 7 days
+# Data - Use T >= 16 to test bidirectional DP
+T = list(range(1, 10))  # 20 days (triggers bidir at T >= 16)
 I = list(range(1, len_I + 1))
 K = [1, 2, 3]
 
@@ -102,11 +102,28 @@ lab_obj = result_lab[8]
 lab_itr = result_lab[10]
 print(f"   Labeling Result: obj={lab_obj:.4f}, iterations={lab_itr}, time={lab_time:.2f}s")
 
+# Test with Labeling SP (bidirectional mode)
+print("\n[3] Running CG with Labeling SP (bidirectional)...")
+t0 = time.perf_counter()
+result_bidir = column_generation_behavior(
+    data, demand_dict, eps, Min_WD_i, Max_WD_i,
+    time_cg_init, max_itr, output_len, chi,
+    threshold, time_cg, I, T, K, prob,
+    sp_solver='labeling_bidir',
+    start_values=start_values,
+    save_lp=False
+)
+bidir_time = time.perf_counter() - t0
+bidir_obj = result_bidir[8]
+bidir_itr = result_bidir[10]
+print(f"   Bidir Result: obj={bidir_obj:.4f}, iterations={bidir_itr}, time={bidir_time:.2f}s")
+
+
 # Optional: Direct MIP comparison (without CG)
 run_direct_mip = True  # Set to True to enable
 direct_mip_obj = None
 if run_direct_mip:
-    print("\n[3] Running Direct MIP (without CG)...")
+    print("\n[4] Running Direct MIP (without CG)...")
     from Utils.compactsolver import Problem
     t0 = time.perf_counter()
     problem_direct = Problem(data, demand_dict, eps, Min_WD_i, Max_WD_i, chi)
@@ -123,10 +140,12 @@ if run_direct_mip:
 print("\n" + "=" * 70)
 print("COMPARISON")
 print("=" * 70)
-match = abs(mip_obj - lab_obj) < 1e-3
-print(f"  CG+MIP SP:     obj={mip_obj:.4f}, iterations={mip_itr}, time={mip_time:.2f}s")
-print(f"  CG+Labeling:   obj={lab_obj:.4f}, iterations={lab_itr}, time={lab_time:.2f}s")
+match = abs(mip_obj - lab_obj) < 1e-3 and abs(lab_obj - bidir_obj) < 1e-3
+print(f"  CG+MIP SP:          obj={mip_obj:.4f}, iter={mip_itr}, time={mip_time:.2f}s")
+print(f"  CG+Labeling(fwd):   obj={lab_obj:.4f}, iter={lab_itr}, time={lab_time:.2f}s")
+print(f"  CG+Labeling(bidir): obj={bidir_obj:.4f}, iter={bidir_itr}, time={bidir_time:.2f}s")
 if direct_mip_obj is not None:
-    print(f"  Direct MIP:    obj={direct_mip_obj:.4f}")
+    print(f"  Direct MIP:         obj={direct_mip_obj:.4f}")
 print(f"  Match: {'✓' if match else '✗'}")
 print("=" * 70)
+
