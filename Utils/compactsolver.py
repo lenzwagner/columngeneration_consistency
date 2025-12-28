@@ -3,7 +3,7 @@ import math
 import time
 
 class Problem:
-    def __init__(self, dfData, DemandDF, eps, Min_WD_i, Max_WD_i, chi):
+    def __init__(self, dfData, DemandDF, eps, Min_WD_i, Max_WD_i, chi, worker_groups=None):
         self.I = dfData['I'].dropna().astype(int).unique().tolist()
         self.T = dfData['T'].dropna().astype(int).unique().tolist()
         self.K = dfData['K'].dropna().astype(int).unique().tolist()
@@ -13,10 +13,10 @@ class Problem:
         self.demand = DemandDF
         self.model = gu.Model("MasterProblem")
         self.mu = 0.1
-        self.epsilon = eps
+        self.epsilon = eps  # Default epsilon
         self.mue = 0.1
         self.zeta = 0.1
-        self.chi = chi
+        self.chi = chi  # Default chi
         self.omega = math.floor(1 / 1e-6)
         self.M = len(self.T) + self.omega
         self.xi = 1 - self.epsilon * self.omega
@@ -28,6 +28,24 @@ class Problem:
         self.demand_values = [self.demand[key] for key in self.demand.keys()]
         self.Min_WD_i = Min_WD_i
         self.Max_WD_i = Max_WD_i
+        
+        # Per-worker parameters for heterogeneous groups
+        if worker_groups is not None:
+            self.eps_by_worker = {}
+            self.chi_by_worker = {}
+            self.xi_by_worker = {}
+            for group in worker_groups.values():
+                omega_g = math.floor(1 / (group.epsilon + 1e-6))
+                xi_g = 1 - group.epsilon * omega_g
+                for w in group.worker_ids:
+                    self.eps_by_worker[w] = group.epsilon
+                    self.chi_by_worker[w] = group.chi
+                    self.xi_by_worker[w] = xi_g
+        else:
+            # Homogeneous: all workers use same parameters
+            self.eps_by_worker = {i: eps for i in self.I}
+            self.chi_by_worker = {i: chi for i in self.I}
+            self.xi_by_worker = {i: self.xi for i in self.I}
 
     def buildLinModel(self):
         self.t0 = time.time()
@@ -151,26 +169,31 @@ class Problem:
 
     def Recovery(self):
         for i in self.I:
-            for t in range(1 + self.chi, len(self.T) + 1):
+            chi_i = self.chi_by_worker.get(i, self.chi)
+            for t in range(1 + chi_i, len(self.T) + 1):
                 self.model.addLConstr(1 <= gu.quicksum(
-                    self.sc[i, j] for j in range(t - self.chi, t+1)) + self.r[i, t])
-                for k in range(t - self.chi, t+1):
+                    self.sc[i, j] for j in range(t - chi_i, t+1)) + self.r[i, t])
+                for k in range(t - chi_i, t+1):
                     self.model.addLConstr(self.sc[i, k] + self.r[i, t] <= 1)
-            for t in range(1, 1 + self.chi):
+            for t in range(1, 1 + chi_i):
                 self.model.addLConstr(0 == self.r[i, t])
         self.model.update()
 
     def linPerformance(self):
         for i in self.I:
+            eps_i = self.eps_by_worker.get(i, self.epsilon)
+            xi_i = self.xi_by_worker.get(i, self.xi)
+            omega_i = math.floor(1 / (eps_i + 1e-6))
+            
             self.model.addLConstr(0 == self.n[i, 1])
             self.model.addLConstr(0 == self.sc[i, 1])
             self.model.addLConstr(1 == self.p[i, 1])
             self.model.addLConstr(0 == self.h[i, 1])
             for t in self.T:
                 self.model.addLConstr(
-                    self.omega * self.kappa[i, t] <= gu.quicksum(self.sc[i, j] for j in range(1, t + 1)))
+                    omega_i * self.kappa[i, t] <= gu.quicksum(self.sc[i, j] for j in range(1, t + 1)))
                 self.model.addLConstr(gu.quicksum(self.sc[i, j] for j in range(1, t + 1)) <= len(self.T) + (
-                        self.omega - 1 - len(self.T)) * (1 - self.kappa[i, t]))
+                        omega_i - 1 - len(self.T)) * (1 - self.kappa[i, t]))
             for t in range(2, len(self.T) + 1):
                 self.model.addLConstr(self.ff[i, t] <= self.n[i, t])
                 self.model.addLConstr(self.n[i, t] <= len(self.T) * self.ff[i, t])
@@ -178,11 +201,12 @@ class Problem:
                 self.model.addLConstr(self.b[i, t] <= 1 - self.sc[i, t])
                 self.model.addLConstr(self.b[i, t] <= self.r[i, t])
                 self.model.addLConstr(self.b[i, t] >= self.r[i, t] + (1 - self.ff[i, t - 1]) + (1 - self.sc[i, t]) - 2)
-                self.model.addLConstr(self.p[i, t] == 1 - self.epsilon * self.n[i, t] - self.xi * self.kappa[i, t])
+                # Use per-worker epsilon and xi
+                self.model.addLConstr(self.p[i, t] == 1 - eps_i * self.n[i, t] - xi_i * self.kappa[i, t])
                 self.model.addLConstr(
                     self.n[i, t] == (self.n[i, t - 1] + self.sc[i, t]) - self.r[i, t] - self.e[i, t] + self.b[i, t])
-                self.model.addLConstr(self.omega * self.h[i, t] <= self.n[i, t])
-                self.model.addLConstr(self.n[i, t] <= ((self.omega - 1) + self.h[i, t]))
+                self.model.addLConstr(omega_i * self.h[i, t] <= self.n[i, t])
+                self.model.addLConstr(self.n[i, t] <= ((omega_i - 1) + self.h[i, t]))
                 self.model.addLConstr(self.e[i, t] <= self.sc[i, t])
                 self.model.addLConstr(self.e[i, t] <= self.h[i, t - 1])
                 self.model.addLConstr(self.e[i, t] >= self.sc[i, t] + self.h[i, t - 1] - 1)

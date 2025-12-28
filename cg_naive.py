@@ -82,7 +82,9 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
         current_obj = master.model.objval
 
         # Get and Print Duals
-        duals_i = master.getDuals_i()
+        duals_i_dict = master.getDuals_i()  # Returns dict: {worker_id: dual}
+        # For naive (homogeneous), use first worker's dual as representative
+        duals_i = duals_i_dict.get(1, list(duals_i_dict.values())[0] if duals_i_dict else 0.0)
         duals_ts = master.getDuals_ts()
 
         # Solve SPs

@@ -5,7 +5,7 @@ import os
 def analyze_results():
     # Use absolute path or relative to script location
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(script_dir, 'Results_Compact.xlsx')
+    file_path = os.path.join(script_dir, 'Results_Behavior_Comp.xlsx')
     
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
@@ -22,7 +22,7 @@ def analyze_results():
     df.columns = df.columns.str.strip()
     
     # Define metrics as requested
-    metrics_to_analyze = ["lower_bound", "incumbent", "gap", "status", "undercoverage", "total_time"]
+    metrics_to_analyze = ["time", "iteration", "objval", "lbound", "time_sp", "time_rmp", "time_ip"]
     group_cols = ["I", "pattern"]
 
     # Check if columns exist

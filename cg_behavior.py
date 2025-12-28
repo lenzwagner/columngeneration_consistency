@@ -6,15 +6,20 @@ from subproblem import *
 from subproblem_factory import create_subproblem
 from Utils.gcutil import *
 from Utils.compactsolver import *
+from worker_groups import create_homogeneous_group, get_worker_params
 
-def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi, threshold, time_cg, I, T, K, scale, sp_solver='mip', start_values=None, save_lp=False):
+def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi, threshold, time_cg, I, T, K, scale, sp_solver='mip', start_values=None, save_lp=False, worker_groups=None):
     # **** Column Generation ****
     # Prerequisites
     modelImprovable = True
+    
+    # Backward compatibility: create homogeneous group if none provided
+    if worker_groups is None:
+        worker_groups = create_homogeneous_group(I, eps, chi)
 
     # Get Starting Solutions (or use provided ones)
     if start_values is None:
-        problem_start = Problem(data, demand_dict, eps, Min_WD_i, Max_WD_i, chi)
+        problem_start = Problem(data, demand_dict, eps, Min_WD_i, Max_WD_i, chi, worker_groups=worker_groups)
         problem_start.buildLinModel()
         problem_start.model.Params.MIPFocus = 1
         problem_start.model.Params.Heuristics = 1
@@ -23,15 +28,31 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
         problem_start.model.update()
         problem_start.model.optimize()
 
-        # Schedules
-        # Create
-        start_values_perf = {(t, s): problem_start.perf[1, t, s].x for t in T for s in K}
-        start_values_p = {(t): problem_start.p[1, t].x for t in T}
-        start_values_x = {(t, s): problem_start.x[1, t, s].x for t in T for s in K}
-        start_values_c = {(t): problem_start.sc[1, t].x for t in T}
-        start_values_r = {(t): problem_start.r[1, t].x for t in T}
-        start_values_eup = {(t): problem_start.e[1, t].x for t in T}
-        start_values_elow = {(t): problem_start.b[1, t].x for t in T}
+        # Extract starting values per group from representative workers
+        # This gives each group a starting column suited to its (epsilon, chi)
+        start_values_by_group = {}
+        for group_name, group in worker_groups.items():
+            rep_worker = group.worker_ids[0]  # Representative worker for this group
+            start_values_by_group[group_name] = {
+                'perf': {(t, s): problem_start.perf[rep_worker, t, s].x for t in T for s in K},
+                'p': {t: problem_start.p[rep_worker, t].x for t in T},
+                'x': {(t, s): problem_start.x[rep_worker, t, s].x for t in T for s in K},
+                'c': {t: problem_start.sc[rep_worker, t].x for t in T},
+                'r': {t: problem_start.r[rep_worker, t].x for t in T},
+                'eup': {t: problem_start.e[rep_worker, t].x for t in T},
+                'elow': {t: problem_start.b[rep_worker, t].x for t in T},
+                'worker_ids': group.worker_ids
+            }
+        
+        # For backward compatibility, use first group's values as default
+        first_group = list(start_values_by_group.values())[0]
+        start_values_perf = first_group['perf']
+        start_values_p = first_group['p']
+        start_values_x = first_group['x']
+        start_values_c = first_group['c']
+        start_values_r = first_group['r']
+        start_values_eup = first_group['eup']
+        start_values_elow = first_group['elow']
     else:
         # Use provided start values
         start_values_perf = start_values['perf']
@@ -41,6 +62,7 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
         start_values_r = start_values['r']
         start_values_eup = start_values['eup']
         start_values_elow = start_values['elow']
+        start_values_by_group = None
 
     # Initialize iterations
     itr = 0
@@ -65,12 +87,21 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
     P_schedules = create_schedule_dict(start_values_p, 1, T)
     X1_schedules = create_schedule_dict(start_values_x, 1, T, K)
 
-    master = MasterProblem(data, demand_dict, max_itr, itr, last_itr, output_len, start_values_perf)
+    master = MasterProblem(data, demand_dict, max_itr, itr, last_itr, output_len, start_values_perf, 
+                           start_by_group=start_values_by_group)
     master.buildModel()
 
     # Initialize and solve relaxed model
     master.setStartSolution()
     master.updateModel()
+    
+    # Save initial LP for debugging
+    if save_lp:
+        import os
+        os.makedirs("debug_models", exist_ok=True)
+        master.model.write("debug_models/mp_initial.lp")
+        print(f"Saved initial LP to debug_models/mp_initial.lp")
+    
     master.solveRelaxModel()
 
     # Retrieve dual values
@@ -98,78 +129,92 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
         current_obj = master.model.objval
 
         # Get and Print Duals
-        duals_i = master.getDuals_i()
+        duals_i = master.getDuals_i()  # Now returns dict: {worker_id: dual}
         duals_ts = master.getDuals_ts()
 
-        # Solve SPs
+        # Solve SPs - one per worker group
         modelImprovable = False
-
-        # Build SP
-        subproblem = create_subproblem(sp_solver, duals_i, duals_ts, data, 1, itr, eps, Min_WD_i, Max_WD_i, chi)
-        subproblem.buildModel()
-
-        # Save time to solve SP
+        all_reduced_costs = []
         sub_start_time = time.time()
-        if previous_reduced_cost < -0.001:
-            print("*{:^{output_len}}*".format(f"Use MIP-Gap > 0 in Iteration {itr}", output_len=output_len))
-            subproblem.solveModelNOpt(time_cg)
-        else:
-            print("*{:^{output_len}}*".format(f"Use MIP-Gap = 0 in Iteration {itr}", output_len=output_len))
-            subproblem.solveModelOpt(time_cg)
+        
+        for group_name, group in worker_groups.items():
+            # Use representative dual for this group (first worker's dual)
+            # In heterogeneous case, we average or use representative
+            representative_worker = group.worker_ids[0]
+            group_dual_i = duals_i.get(representative_worker, 0.0)
+            
+            # Build SP with group-specific (epsilon, chi)
+            subproblem = create_subproblem(
+                sp_solver, group_dual_i, duals_ts, data, representative_worker, itr,
+                group.epsilon, Min_WD_i, Max_WD_i, group.chi
+            )
+            subproblem.buildModel()
+
+            # Solve SP
+            if previous_reduced_cost < -0.001:
+                subproblem.solveModelNOpt(time_cg)
+            else:
+                subproblem.solveModelOpt(time_cg)
+
+            # Check if SP is solvable
+            status = subproblem.getStatus()
+            if status != 2:
+                print(f"Warning: Pricing-Problem for group {group_name} not optimal")
+                continue
+
+            # Get reduced cost
+            reducedCost = subproblem.model.objval
+            all_reduced_costs.append(reducedCost)
+            print(f'Red. Cost for {group_name}: {reducedCost}')
+
+            # Generate and add columns for each worker in this group
+            if reducedCost < -threshold:
+                Schedules = subproblem.getNewSchedule()
+                
+                # Debug: print schedule in first 5 iterations
+                if itr <= 5:
+                    col_list = sorted([(k[0], k[1]) for k, v in Schedules.items() if v > 0.5])
+                    print(f"  [ITR {itr}] [{group_name}] Schedule: {col_list}")
+                
+                # Add lambda and column for each worker in this group
+                for worker_id in group.worker_ids:
+                    master.addLambda(itr, worker_id)
+                    master.addColumn(itr, Schedules, worker_id)
+                
+                modelImprovable = True
+                
+                # Track schedules
+                index = representative_worker
+                keys = ["X", "Perf", "P", "C", "R", "EUp", "Elow", "X1"]
+                methods = ["getOptX", "getOptPerf", "getOptP", "getOptC", "getOptR", "getOptEUp", "getOptElow", "getOptX"]
+                schedules = [X_schedules, Perf_schedules, P_schedules, Cons_schedules, Recovery_schedules, EUp_schedules, ELow_schedules, X1_schedules]
+
+                for key, method, schedule in zip(keys, methods, schedules):
+                    value = getattr(subproblem, method)()
+                    schedule[f"Physician_{index}"].append(value)
+        
         sub_end_time = time.time()
         sp_time_hist.append(sub_end_time - sub_start_time)
+        timeHist.append(sub_end_time - sub_start_time)
 
-        sub_totaltime = sub_end_time - sub_start_time
-        timeHist.append(sub_totaltime)
-        index = 1
-
-        keys = ["X", "Perf", "P", "C", "R", "EUp", "Elow", "X1"]
-        methods = ["getOptX", "getOptPerf", "getOptP", "getOptC", "getOptR", "getOptEUp", "getOptElow", "getOptX"]
-        schedules = [X_schedules, Perf_schedules, P_schedules, Cons_schedules, Recovery_schedules, EUp_schedules, ELow_schedules, X1_schedules]
-
-        for key, method, schedule in zip(keys, methods, schedules):
-            value = getattr(subproblem, method)()
-            schedule[f"Physician_{index}"].append(value)
-
-
-        # Check if SP is solvable
-        status = subproblem.getStatus()
-        if status != 2:
-            raise Exception("*{:^{output_len}}*".format("Pricing-Problem can not reach optimality!", output_len=output_len))
-
-        # Save ObjVal History
-        reducedCost = subproblem.model.objval
-        print(f'Red. Cost {reducedCost}')
-        objValHistSP.append(reducedCost)
-
-        # Update previous_reduced_cost for the next iteration
-        previous_reduced_cost = reducedCost
+        # Aggregate reduced costs for history
+        if all_reduced_costs:
+            min_rc = min(all_reduced_costs)
+            objValHistSP.append(min_rc)
+            previous_reduced_cost = min_rc
+        else:
+            objValHistSP.append(0.0)
+            previous_reduced_cost = 0.0
 
         # Increase latest used iteration
         last_itr = itr + 1
-
-        # Generate and add columns with reduced cost
-        if reducedCost < -threshold:
-            Schedules = subproblem.getNewSchedule()
+        master.updateModel()
             
-            # Debug: print schedule and optimal count in first 5 iterations
-            if itr <= 5:
-                col_list = sorted([(k[0], k[1]) for k, v in Schedules.items() if v > 0.5])
-                n_optimal = subproblem.getOptimalCount() if hasattr(subproblem, 'getOptimalCount') else 1
-                print(f"  [ITR {itr}] [{sp_solver.upper()}] Schedule: {col_list}")
-                print(f"  [ITR {itr}] [{sp_solver.upper()}] Optimal end-states: {n_optimal}")
-            
-            # Add lambda variable first, then set coefficients
-            master.addLambda(itr)
-            master.addColumn(itr, Schedules)
-            master.updateModel()
-            modelImprovable = True
-            
-            # Save LP if debugging enabled
-            if save_lp:
-                import os
-                os.makedirs("debug_models", exist_ok=True)
-                master.model.write(f"debug_models/mp_{sp_solver}_iter{itr}.lp")
+        # Save LP if debugging enabled
+        if save_lp:
+            import os
+            os.makedirs("debug_models", exist_ok=True)
+            master.model.write(f"debug_models/mp_{sp_solver}_iter{itr}.lp")
 
         # Update Model
         master.updateModel()

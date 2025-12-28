@@ -5,6 +5,7 @@ from Utils.Plots.plots import *
 from Utils.aggundercover import *
 from datetime import *
 from Utils.demand import *
+from worker_groups import create_groups_from_fractions, create_homogeneous_group
 import time
 
 # DataFrame
@@ -24,12 +25,29 @@ max_itr, output_len, mue, threshold = 200, 98, 1e-4, 6e-5
 
 start_time = time.time()
 
+# ========== HETEROGENEOUS WORKER GROUPS CONFIGURATION ==========
+# Set to True to use heterogeneous worker groups, False for homogeneous
+use_heterogeneous = False
+
+# Fraction string defining group proportions (must sum to 1)
+# Example: "1/3,1/3,1/3" for three equal groups
+group_fractions = "1/3,1/3,1/3"
+
+# Parameters for each group: (epsilon, chi)
+# Must have same number of tuples as fractions
+group_params = [
+    (0.08, 3),  # Group 1: low resilience (high sensitivity to inconsistencies)
+    (0.06, 5),  # Group 2: medium resilience
+    (0.04, 7),  # Group 3: high resilience (low sensitivity, quick recovery)
+]
+# ================================================================
+
 # Loop
 for epsilon in [0.06]:
     for chi in [5]:
         for len_I in [50]:
             for pattern in ['Medium']:
-                for scenario in range(1, 6):
+                for scenario in range(1, 2):
                     if pattern == 'Medium':
                         prob = 1.0
                     elif pattern == 'High':
@@ -53,6 +71,14 @@ for epsilon in [0.06]:
 
                     eps = epsilon
 
+                    # Create worker groups based on configuration
+                    if use_heterogeneous:
+                        worker_groups = create_groups_from_fractions(I, group_fractions, group_params)
+                        print(f"Using heterogeneous groups: {[(g.name, len(g.worker_ids), g.epsilon, g.chi) for g in worker_groups.values()]}")
+                    else:
+                        worker_groups = create_homogeneous_group(I, eps, chi)
+                        print(f"Using homogeneous group: eps={eps}, chi={chi}")
+
                     print(f"")
                     print(f"Iteration: Eps: {epsilon} - Chi: {chi} - I: {len(I)} - Pattern: {pattern} - K: {scenario}")
                     print(f"")
@@ -69,7 +95,8 @@ for epsilon in [0.06]:
                      spread_perf_behavior, load_share_perf_behavior, gini_perf_behavior, 
                      shift_blocks_behavior) = column_generation_behavior(
                         data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi,
-                                                threshold, time_cg, I, T, K, prob, sp_solver='labeling_bidir'
+                        threshold, time_cg, I, T, K, prob, sp_solver='labeling_bidir',
+                        worker_groups=worker_groups, save_lp=True
                     )
                     time_bidir = time.time() - t0_bidir
                     print(f'  --> CG+bidir: obj={final_obj_behavior:.2f}, iter={itr}, gap={gap:.2f}%, time={time_bidir:.1f}s')

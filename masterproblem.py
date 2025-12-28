@@ -11,7 +11,7 @@ class MasterProblem:
     This allows proper column generation where new columns are added with fixed coefficients.
     """
     
-    def __init__(self, df, Demand, max_iteration, current_iteration, last, nr, start):
+    def __init__(self, df, Demand, max_iteration, current_iteration, last, nr, start, start_by_group=None):
         self.iteration = current_iteration
         self.max_iteration = max_iteration
         self.nurses = df['I'].dropna().astype(int).unique().tolist()
@@ -26,14 +26,17 @@ class MasterProblem:
         self.newvar = {}
         self.last_itr = last
         self.max_itr = max_iteration
-        self.cons_lmbda = None
+        self.cons_lmbda = {}  # Per-worker convexity constraints
         self.output_len = nr
         self.demand_values = [self.demand[key] for key in self.demand.keys()]
-        self.start = start
+        self.start = start  # Default start values (backward compatibility)
+        self.start_by_group = start_by_group  # Per-group start values
         
-        # Track all added schedules (column index -> schedule dict)
+        # Track all added schedules: (worker_id, roster_idx) -> schedule dict
         self.all_schedules = {}
-        self.active_roster = [1]  # Track which roster indices are active
+        # Track active rosters per worker: {worker_id: [roster_indices]}
+        self.active_roster_by_worker = {i: [1] for i in self.nurses}
+        self.active_roster = [1]  # Legacy: global roster list for backward compatibility
 
     def buildModel(self):
         self.generateVariables()
@@ -46,17 +49,23 @@ class MasterProblem:
         # Understaffing variables
         self.u = self.model.addVars(self.days, self.shifts, vtype=gu.GRB.CONTINUOUS, lb=0, name='u')
         
-        # Lambda variables - only create for initial roster
+        # Lambda variables: lmbda[worker_id, roster_idx]
+        # Initially create for all workers with roster index 1
         self.lmbda = {}
-        for r in self.rosterinitial:
-            self.lmbda[r] = self.model.addVar(vtype=gu.GRB.CONTINUOUS, lb=0, name=f'lmbda[{r}]')
+        for i in self.nurses:
+            for r in self.rosterinitial:
+                self.lmbda[i, r] = self.model.addVar(
+                    vtype=gu.GRB.CONTINUOUS, lb=0, name=f'lmbda[{i},{r}]'
+                )
 
     def generateConstraints(self):
-        # Lambda sum constraint: sum of all lambdas = number of nurses
-        self.cons_lmbda = self.model.addConstr(
-            gu.quicksum(self.lmbda[r] for r in self.rosterinitial) == len(self.nurses),
-            name="lmb"
-        )
+        # Per-worker convexity constraints: sum of lambdas for each worker = 1
+        self.cons_lmbda = {}
+        for i in self.nurses:
+            self.cons_lmbda[i] = self.model.addConstr(
+                gu.quicksum(self.lmbda[i, r] for r in self.rosterinitial) == 1,
+                name=f"conv_{i}"
+            )
         
         # Demand constraints: LINEAR constraints with performance as coefficients
         for t in self.days:
@@ -75,8 +84,8 @@ class MasterProblem:
         )
 
     def getDuals_i(self):
-        """Get dual for the lambda sum constraint."""
-        return self.cons_lmbda.Pi
+        """Get dual for the per-worker convexity constraints."""
+        return {i: self.cons_lmbda[i].Pi for i in self.nurses}
 
     def getDuals_ts(self):
         """Get duals for demand constraints."""
@@ -86,63 +95,107 @@ class MasterProblem:
         self.model.update()
 
     def setStartSolution(self):
-        """Set the initial solution coefficients for roster index 1."""
-        for t in self.days:
-            for s in self.shifts:
-                if (t, s) in self.start:
-                    # Add the coefficient: performance * lmbda[1]
-                    coeff = self.start[t, s]
-                    self.model.chgCoeff(self.cons_demand[t, s], self.lmbda[1], coeff)
+        """Set the initial solution coefficients for roster index 1.
+        
+        Uses per-group start values if available, otherwise uses default start values.
+        """
+        if self.start_by_group is not None:
+            # Use per-group start values: each worker group gets its own column
+            for group_name, group_data in self.start_by_group.items():
+                perf = group_data['perf']
+                for worker_id in group_data['worker_ids']:
+                    for t in self.days:
+                        for s in self.shifts:
+                            if (t, s) in perf:
+                                coeff = perf[t, s]
+                                self.model.chgCoeff(self.cons_demand[t, s], self.lmbda[worker_id, 1], coeff)
+        else:
+            # Backward compatible: use same start values for all workers
+            for i in self.nurses:
+                for t in self.days:
+                    for s in self.shifts:
+                        if (t, s) in self.start:
+                            coeff = self.start[t, s]
+                            self.model.chgCoeff(self.cons_demand[t, s], self.lmbda[i, 1], coeff)
         self.model.update()
 
-    def addColumn(self, itr, schedule):
+    def addColumn(self, itr, schedule, worker_id=None):
         """
         Add a new column (schedule) to the master problem.
         
         Args:
             itr: Iteration number (column index will be itr + 1)
             schedule: Dictionary {(day, shift, roster_idx): performance_value}
+            worker_id: Worker ID for this column. If None, applies to all workers.
         """
         roster_idx = itr + 1
         
-        # Store the schedule
-        self.all_schedules[roster_idx] = schedule
+        # Determine which workers this column applies to
+        workers = [worker_id] if worker_id is not None else self.nurses
         
-        # Build the column coefficients for each constraint
-        for t in self.days:
-            for s in self.shifts:
-                # Get the performance coefficient for this (day, shift, roster_idx)
-                coeff = schedule.get((t, s, roster_idx), 0.0)
-                if coeff > 0:
-                    # Add coefficient to the demand constraint
-                    self.model.chgCoeff(self.cons_demand[t, s], self.lmbda[roster_idx], coeff)
+        for w in workers:
+            # Store the schedule
+            self.all_schedules[(w, roster_idx)] = schedule
+            
+            # Build the column coefficients for each constraint
+            for t in self.days:
+                for s in self.shifts:
+                    # Get the performance coefficient for this (day, shift, roster_idx)
+                    coeff = schedule.get((t, s, roster_idx), 0.0)
+                    if coeff > 0:
+                        # Add coefficient to the demand constraint
+                        self.model.chgCoeff(self.cons_demand[t, s], self.lmbda[w, roster_idx], coeff)
         
         self.model.update()
 
-    def addLambda(self, itr):
+    def addLambda(self, itr, worker_id=None):
         """
         Add a new lambda variable for the given iteration.
         
         Args:
             itr: Iteration number (roster index will be itr + 1)
+            worker_id: Worker ID for this lambda. If None, creates for all workers.
         """
         roster_idx = itr + 1
         
-        # Create new lambda variable
-        self.lmbda[roster_idx] = self.model.addVar(
-            vtype=gu.GRB.CONTINUOUS, lb=0, name=f'lmbda[{roster_idx}]'
-        )
-        self.active_roster.append(roster_idx)
+        # Determine which workers this lambda applies to
+        workers = [worker_id] if worker_id is not None else self.nurses
         
-        # Add to lambda sum constraint
-        self.model.chgCoeff(self.cons_lmbda, self.lmbda[roster_idx], 1.0)
+        for w in workers:
+            # Create new lambda variable
+            self.lmbda[w, roster_idx] = self.model.addVar(
+                vtype=gu.GRB.CONTINUOUS, lb=0, name=f'lmbda[{w},{roster_idx}]'
+            )
+            
+            # Track active roster for this worker
+            if w not in self.active_roster_by_worker:
+                self.active_roster_by_worker[w] = []
+            self.active_roster_by_worker[w].append(roster_idx)
+            
+            # Add to per-worker convexity constraint
+            self.model.chgCoeff(self.cons_lmbda[w], self.lmbda[w, roster_idx], 1.0)
+        
+        # Legacy: also track in global active_roster
+        if roster_idx not in self.active_roster:
+            self.active_roster.append(roster_idx)
         
         self.model.update()
 
     def printLambdas(self):
-        vals = {r: self.lmbda[r].X for r in self.active_roster}
-        round_vals = {key: round(value) for key, value in vals.items()}
-        return round_vals
+        """Get lambda values by roster index (summed across all workers).
+        
+        Returns dict: {roster_idx: count of workers using this roster}
+        This maintains backward compatibility with plotPerformanceList.
+        """
+        vals = {}
+        for r in self.active_roster:
+            roster_sum = 0
+            for i in self.nurses:
+                if (i, r) in self.lmbda:
+                    roster_sum += round(self.lmbda[i, r].X)
+            if roster_sum > 0:
+                vals[r] = roster_sum
+        return vals
 
     def finalSolve(self, timeLimit):
         try:
@@ -152,9 +205,12 @@ class MasterProblem:
             self.model.Params.MIPGap = 1e-2
             self.model.Params.OutputFlag = 1
             
-            # Set lambda variables to integer
-            for r in self.active_roster:
-                self.lmbda[r].VType = gu.GRB.INTEGER
+            # Set lambda variables to integer (per-worker indexing)
+            for i in self.nurses:
+                rosters = self.active_roster_by_worker.get(i, [1])
+                for r in rosters:
+                    if (i, r) in self.lmbda:
+                        self.lmbda[i, r].VType = gu.GRB.INTEGER
             
             self.model.update()
             self.model.optimize()
