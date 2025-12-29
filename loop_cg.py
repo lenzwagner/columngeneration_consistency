@@ -27,7 +27,7 @@ start_time = time.time()
 # Loop
 for epsilon in [0.06]:
     for chi in [5]:
-        for len_I in [100]:
+        for len_I in [50]:
             for pattern in ['Medium']:
                 for scenario in range(1, 2):
                     if pattern == 'Medium':
@@ -182,5 +182,5 @@ print("\n" + "=" * 80)
 print("SUMMARY: CG+bidir Results")
 print("=" * 80)
 for idx, row in results.iterrows():
-    print(f"Scenario {row['scenario']}: obj={row['objval']:.2f}, gap={row['gap']:.2f}%, iter={row['iteration']}, time={row['time_total']:.1f}s")
+    print(f"Scenario {row['scenario']}: obj={row['objval']:.2f}, LB={row['lbound']:.2f}, gap={row['gap']:.2f}%, iter={row['iteration']}, time={row['time_total']:.1f}s")
 print("=" * 80)
