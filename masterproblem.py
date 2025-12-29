@@ -111,7 +111,8 @@ class MasterProblem:
         """Set the initial solution coefficients for roster index 1.
         
         Uses per-group start values if available, otherwise uses default start values.
-        The coefficient for each group's lambda contributes group_size to the demand.
+        Lambda[g,r] represents COUNT of workers in group g using roster r.
+        Coefficient is just perf value - the count is embedded in the lambda variable.
         """
         if self.start_by_group is not None:
             # Use per-group start values
@@ -122,8 +123,8 @@ class MasterProblem:
                     for t in self.days:
                         for s in self.shifts:
                             if (t, s) in perf:
-                                # Coefficient = perf * group_size (since λ represents all workers in group)
-                                coeff = perf[t, s] * info['size']
+                                # Coefficient = just perf value (lambda carries the count)
+                                coeff = perf[t, s]
                                 self.model.chgCoeff(self.cons_demand[t, s], self.lmbda[group_idx, 1], coeff)
         else:
             # Backward compatible: use same start values for all groups
@@ -131,7 +132,7 @@ class MasterProblem:
                 for t in self.days:
                     for s in self.shifts:
                         if (t, s) in self.start:
-                            coeff = self.start[t, s] * info['size']
+                            coeff = self.start[t, s]
                             self.model.chgCoeff(self.cons_demand[t, s], self.lmbda[group_idx, 1], coeff)
         self.model.update()
 
@@ -143,6 +144,9 @@ class MasterProblem:
             itr: Iteration number (column index will be itr + 1)
             schedule: Dictionary {(day, shift, roster_idx): performance_value}
             group_idx: Group index for this column. If None, applies to all groups.
+        
+        The coefficient for each lambda is just the perf value.
+        Lambda[g,r] carries the COUNT of workers using that roster.
         """
         roster_idx = itr + 1
         
@@ -150,7 +154,6 @@ class MasterProblem:
         groups = [group_idx] if group_idx is not None else list(self.group_info.keys())
         
         for g in groups:
-            group_size = self.group_info[g]['size']
             # Store the schedule
             self.all_schedules[(g, roster_idx)] = schedule
             
@@ -160,8 +163,8 @@ class MasterProblem:
                     # Get the performance coefficient for this (day, shift, roster_idx)
                     coeff = schedule.get((t, s, roster_idx), 0.0)
                     if coeff > 0:
-                        # Coefficient = perf * group_size
-                        self.model.chgCoeff(self.cons_demand[t, s], self.lmbda[g, roster_idx], coeff * group_size)
+                        # Coefficient = just perf value (lambda carries the count)
+                        self.model.chgCoeff(self.cons_demand[t, s], self.lmbda[g, roster_idx], coeff)
         
         self.model.update()
 
