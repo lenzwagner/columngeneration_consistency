@@ -71,6 +71,14 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
     # Initialize and solve relaxed model
     master.setStartSolution()
     master.updateModel()
+    
+    # Save initial LP
+    if save_lp:
+        import os
+        os.makedirs("debug_models", exist_ok=True)
+        master.model.write("debug_models/mp_initial.lp")
+        print("Saved: debug_models/mp_initial.lp")
+    
     master.solveRelaxModel()
 
     # Retrieve dual values
@@ -96,6 +104,11 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
 
         objValHistRMP.append(master.model.objval)
         current_obj = master.model.objval
+        
+        # Save LP after each RMP solve
+        if save_lp:
+            master.model.write(f"debug_models/mp_iter{itr}.lp")
+            print(f"Saved: debug_models/mp_iter{itr}.lp")
 
         # Get and Print Duals
         duals_i = master.getDuals_i()

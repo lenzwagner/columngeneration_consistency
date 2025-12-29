@@ -29,7 +29,7 @@ for epsilon in [0.06]:
     for chi in [5]:
         for len_I in [100]:
             for pattern in ['Medium']:
-                for scenario in range(1, 26):
+                for scenario in range(1, 2):
                     if pattern == 'Medium':
                         prob = 1.0
                     elif pattern == 'High':
@@ -69,7 +69,7 @@ for epsilon in [0.06]:
                      spread_perf_behavior, load_share_perf_behavior, gini_perf_behavior, 
                      shift_blocks_behavior) = column_generation_behavior(
                         data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi,
-                                                threshold, time_cg, I, T, K, prob, sp_solver='labeling_bidir'
+                                                threshold, time_cg, I, T, K, prob, sp_solver='labeling_bidir', save_lp=True
                     )
                     time_bidir = time.time() - t0_bidir
                     print(f'  --> CG+bidir: obj={final_obj_behavior:.2f}, iter={itr}, gap={gap:.2f}%, time={time_bidir:.1f}s')
