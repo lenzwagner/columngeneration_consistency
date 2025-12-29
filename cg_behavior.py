@@ -88,7 +88,7 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
     X1_schedules = create_schedule_dict(start_values_x, 1, T, K)
 
     master = MasterProblem(data, demand_dict, max_itr, itr, last_itr, output_len, start_values_perf, 
-                           start_by_group=start_values_by_group)
+                           start_by_group=start_values_by_group, worker_groups=worker_groups)
     master.buildModel()
 
     # Initialize and solve relaxed model
@@ -167,7 +167,7 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
             all_reduced_costs.append(reducedCost)
             print(f'Red. Cost for {group_name}: {reducedCost}')
 
-            # Generate and add columns for each worker in this group
+            # Generate and add columns for this group
             if reducedCost < -threshold:
                 Schedules = subproblem.getNewSchedule()
                 
@@ -176,15 +176,15 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
                     col_list = sorted([(k[0], k[1]) for k, v in Schedules.items() if v > 0.5])
                     print(f"  [ITR {itr}] [{group_name}] Schedule: {col_list}")
                 
-                # Add lambda and column for each worker in this group
-                for worker_id in group.worker_ids:
-                    master.addLambda(itr, worker_id)
-                    master.addColumn(itr, Schedules, worker_id)
+                # Add lambda and column for this group (using group_idx)
+                group_idx = list(worker_groups.keys()).index(group_name) + 1
+                master.addLambda(itr, group_idx)
+                master.addColumn(itr, Schedules, group_idx)
                 
                 modelImprovable = True
                 
-                # Track schedules
-                index = representative_worker
+                # Track schedules (use Physician_1 for backward compatibility)
+                index = 1
                 keys = ["X", "Perf", "P", "C", "R", "EUp", "Elow", "X1"]
                 methods = ["getOptX", "getOptPerf", "getOptP", "getOptC", "getOptR", "getOptEUp", "getOptElow", "getOptX"]
                 schedules = [X_schedules, Perf_schedules, P_schedules, Cons_schedules, Recovery_schedules, EUp_schedules, ELow_schedules, X1_schedules]

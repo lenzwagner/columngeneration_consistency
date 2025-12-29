@@ -27,7 +27,7 @@ start_time = time.time()
 
 # ========== HETEROGENEOUS WORKER GROUPS CONFIGURATION ==========
 # Set to True to use heterogeneous worker groups, False for homogeneous
-use_heterogeneous = False
+use_heterogeneous = True
 
 # Fraction string defining group proportions (must sum to 1)
 # Example: "1/3,1/3,1/3" for three equal groups
