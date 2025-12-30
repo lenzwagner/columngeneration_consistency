@@ -21,24 +21,24 @@ results = pd.DataFrame(columns=['I', 'T', 'K', 'pattern', 'scenario', 'prob', 'e
 
 # Times and Parameter
 time_Limit, time_cg, time_cg_init, prob = 7200, 7200, 10, 1.0
-max_itr, output_len, mue, threshold = 200, 98, 1e-4, 6e-5
+max_itr, output_len, mue, threshold = 2000, 98, 1e-4, 6e-5
 
 start_time = time.time()
 
 # ========== HETEROGENEOUS WORKER GROUPS CONFIGURATION ==========
 # Set to True to use heterogeneous worker groups, False for homogeneous
-use_heterogeneous = False
+use_heterogeneous = True
 
 # Fraction string defining group proportions (must sum to 1)
-# Example: "1/3,1/3,1/3" for three equal groups
-group_fractions = "1/3,1/3,1/3"
+group_fractions = "1/4,1/4,1/4,1/4"
 
 # Parameters for each group: (epsilon, chi)
 # Must have same number of tuples as fractions
 group_params = [
-    (0.08, 3),  # Group 1: low resilience (high sensitivity to inconsistencies)
-    (0.06, 5),  # Group 2: medium resilience
-    (0.04, 7),  # Group 3: high resilience (low sensitivity, quick recovery)
+    (0.08, 3),
+    (0.06, 5),
+    (0.04, 7),
+    (0.02, 9),
 ]
 # ================================================================
 
@@ -96,7 +96,7 @@ for epsilon in [0.06]:
                      shift_blocks_behavior) = column_generation_behavior(
                         data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi,
                         threshold, time_cg, I, T, K, prob, sp_solver='labeling_bidir',
-                        worker_groups=worker_groups, save_lp=True
+                        worker_groups=worker_groups, save_lp=True, use_heuristic_start=False
                     )
                     time_bidir = time.time() - t0_bidir
                     print(f'  --> CG+bidir: obj={final_obj_behavior:.2f}, iter={itr}, gap={gap:.2f}%, time={time_bidir:.1f}s')
@@ -209,5 +209,5 @@ print("\n" + "=" * 80)
 print("SUMMARY: CG+bidir Results")
 print("=" * 80)
 for idx, row in results.iterrows():
-    print(f"Scenario {row['scenario']}: obj={row['objval']:.2f}, gap={row['gap']:.2f}%, iter={row['iteration']}, time={row['time_total']:.1f}s")
+    print(f"Scenario {row['scenario']}: obj={row['objval']:.2f}, LB={row['lbound']:.2f}, gap={row['gap']:.2f}%, iter={row['iteration']}, time={row['time_total']:.1f}s")
 print("=" * 80)

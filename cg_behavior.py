@@ -8,7 +8,72 @@ from Utils.gcutil import *
 from Utils.compactsolver import *
 from worker_groups import create_homogeneous_group, get_worker_params
 
-def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi, threshold, time_cg, I, T, K, scale, sp_solver='mip', start_values=None, save_lp=False, worker_groups=None):
+
+def generate_feasible_schedule_heuristic(T, K, eps=0.06):
+    """
+    Generate a simple feasible schedule heuristic.
+    Pattern: 4 work days, 2 rest days, cycling through shifts.
+    All workers use the same schedule (homogeneous starting point).
+    
+    Returns: dict with 'perf', 'x', 'p', 'c', 'r', 'eup', 'elow'
+    """
+    n_days = len(T)
+    n_shifts = len(K)
+    
+    # Initialize all to 0
+    x = {(t, s): 0.0 for t in T for s in K}
+    perf = {(t, s): 0.0 for t in T for s in K}
+    p = {t: 1.0 for t in T}          # Start with full performance
+    c = {t: 0.0 for t in T}          # Consistency (shift changes)
+    r = {t: 0.0 for t in T}          # Recovery days
+    eup = {t: 0.0 for t in T}
+    elow = {t: 0.0 for t in T}
+    
+    # Pattern: 4 work days, 2 rest days
+    work_pattern = [1, 1, 1, 1, 0, 0]  # 4 on, 2 off
+    current_shift = 1
+    last_shift = None
+    consecutive_changes = 0
+    
+    for day_idx, t in enumerate(T):
+        pattern_idx = day_idx % len(work_pattern)
+        is_work_day = work_pattern[pattern_idx]
+        
+        if is_work_day:
+            # Assign to current shift
+            x[t, current_shift] = 1.0
+            
+            # Track shift changes for consistency
+            if last_shift is not None and last_shift != current_shift:
+                c[t] = 1.0
+                consecutive_changes += 1
+            else:
+                consecutive_changes = 0
+            
+            # Calculate performance based on consecutive changes
+            # perf = 1 - eps * consecutive_changes
+            perf[t, current_shift] = max(0.0, 1.0 - eps * consecutive_changes)
+            p[t] = perf[t, current_shift]
+            
+            last_shift = current_shift
+        else:
+            # Rest day
+            r[t] = 1.0
+            last_shift = None
+            consecutive_changes = 0
+            p[t] = 1.0  # Recovery resets performance
+    
+    return {
+        'perf': perf,
+        'x': x,
+        'p': p,
+        'c': c,
+        'r': r,
+        'eup': eup,
+        'elow': elow
+    }
+
+def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi, threshold, time_cg, I, T, K, scale, sp_solver='mip', start_values=None, save_lp=False, worker_groups=None, use_heuristic_start=True):
     # **** Column Generation ****
     # Prerequisites
     modelImprovable = True
@@ -19,30 +84,68 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
 
     # Get Starting Solutions (or use provided ones)
     if start_values is None:
-        problem_start = Problem(data, demand_dict, eps, Min_WD_i, Max_WD_i, chi, worker_groups=worker_groups)
-        problem_start.buildLinModel()
-        problem_start.model.Params.MIPFocus = 1
-        problem_start.model.Params.Heuristics = 1
-        problem_start.model.Params.RINS = 10
-        problem_start.model.Params.TimeLimit = time_cg_init
-        problem_start.model.update()
-        problem_start.model.optimize()
+        if use_heuristic_start:
+            # Fast heuristic: generate simple feasible schedule for all workers
+            print("Using HEURISTIC for initial solution...")
+            heuristic_sol = generate_feasible_schedule_heuristic(T, K, eps)
+            
+            # Same start values for all groups
+            start_values_by_group = {}
+            for group_name, group in worker_groups.items():
+                start_values_by_group[group_name] = {
+                    'perf': heuristic_sol['perf'],
+                    'p': heuristic_sol['p'],
+                    'x': heuristic_sol['x'],
+                    'c': heuristic_sol['c'],
+                    'r': heuristic_sol['r'],
+                    'eup': heuristic_sol['eup'],
+                    'elow': heuristic_sol['elow'],
+                    'worker_ids': group.worker_ids
+                }
+            
+            # Print schedule summary
+            work_days = sum(1 for k, v in heuristic_sol['x'].items() if v > 0.5)
+            print(f"  Heuristic: {work_days} work days, pattern: 4 on / 2 off")
+        else:
+            # Use compact solver
+            problem_start = Problem(data, demand_dict, eps, Min_WD_i, Max_WD_i, chi, worker_groups=worker_groups)
+            problem_start.buildLinModel()
+            problem_start.model.Params.MIPFocus = 1
+            problem_start.model.Params.Heuristics = 1
+            problem_start.model.Params.RINS = 10
+            problem_start.model.Params.TimeLimit = time_cg_init
+            problem_start.model.update()
+            problem_start.model.optimize()
+            
+            # Debug: check solution status
+            print(f"Compact Solver Status: {problem_start.model.Status} (2=Optimal)")
+            print(f"Compact Solver ObjVal: {problem_start.model.ObjVal:.2f}")
 
-        # Extract starting values per group from representative workers
-        # This gives each group a starting column suited to its (epsilon, chi)
-        start_values_by_group = {}
-        for group_name, group in worker_groups.items():
-            rep_worker = group.worker_ids[0]  # Representative worker for this group
-            start_values_by_group[group_name] = {
-                'perf': {(t, s): problem_start.perf[rep_worker, t, s].x for t in T for s in K},
-                'p': {t: problem_start.p[rep_worker, t].x for t in T},
-                'x': {(t, s): problem_start.x[rep_worker, t, s].x for t in T for s in K},
-                'c': {t: problem_start.sc[rep_worker, t].x for t in T},
-                'r': {t: problem_start.r[rep_worker, t].x for t in T},
-                'eup': {t: problem_start.e[rep_worker, t].x for t in T},
-                'elow': {t: problem_start.b[rep_worker, t].x for t in T},
-                'worker_ids': group.worker_ids
-            }
+            # Extract starting values per group from representative workers
+            # This gives each group a starting column suited to its (epsilon, chi)
+            start_values_by_group = {}
+            for group_name, group in worker_groups.items():
+                rep_worker = group.worker_ids[0]  # Representative worker for this group
+                start_values_by_group[group_name] = {
+                    'perf': {(t, s): problem_start.perf[rep_worker, t, s].x for t in T for s in K},
+                    'p': {t: problem_start.p[rep_worker, t].x for t in T},
+                    'x': {(t, s): problem_start.x[rep_worker, t, s].x for t in T for s in K},
+                    'c': {t: problem_start.sc[rep_worker, t].x for t in T},
+                    'r': {t: problem_start.r[rep_worker, t].x for t in T},
+                    'eup': {t: problem_start.e[rep_worker, t].x for t in T},
+                    'elow': {t: problem_start.b[rep_worker, t].x for t in T},
+                    'worker_ids': group.worker_ids
+                }
+        
+        # Print initial solutions per group
+        print("\n" + "="*80)
+        print("INITIAL SOLUTIONS PER GROUP")
+        print("="*80)
+        for group_name, sv in start_values_by_group.items():
+            print(f"\n{group_name}:")
+            print(f"  perf: {sv['perf']}")
+            print(f"  x: {sv['x']}")
+        print("="*80 + "\n")
         
         # For backward compatibility, use first group's values as default
         first_group = list(start_values_by_group.values())[0]
@@ -138,10 +241,12 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
         sub_start_time = time.time()
         
         for group_name, group in worker_groups.items():
-            # Use representative dual for this group (first worker's dual)
-            # In heterogeneous case, we average or use representative
+            # Get group index for this group (1-based)
+            group_idx = list(worker_groups.keys()).index(group_name) + 1
             representative_worker = group.worker_ids[0]
-            group_dual_i = duals_i.get(representative_worker, 0.0)
+            
+            # Get dual for this group's convexity constraint
+            group_dual_i = duals_i.get(group_idx, 0.0)
             
             # Build SP with group-specific (epsilon, chi)
             subproblem = create_subproblem(
