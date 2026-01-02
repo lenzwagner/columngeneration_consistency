@@ -77,7 +77,7 @@ EXPERIMENTS = {
 # PARAMETERS
 # ============================================================================
 
-time_Limit, time_cg, time_cg_init = 7200, 7200, 60
+time_Limit, time_cg, time_cg_init = 7200, 7200, 10
 max_itr, output_len, threshold = 2000, 98, 6e-5
 N_SEEDS = 25  # Number of scenarios per experiment
 

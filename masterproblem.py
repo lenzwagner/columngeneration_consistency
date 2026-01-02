@@ -306,22 +306,46 @@ class MasterProblem:
         return self.model.ObjVal
 
     def calc_behavior(self, lst, ls_sc, scale):
+        """
+        Calculate behavior metrics.
+        
+        Key insight: undercoverage = understaffing + perf_loss
+        - undercoverage: from u-variables in MP (total shortage accounting for perf)
+        - perf_loss: Σ(1-p) for all working shifts (p>0) - the "effective" capacity loss
+        - understaffing: undercoverage - perf_loss (shortage due to not enough workers)
+        
+        Args:
+            lst: Performance values (ls_perf) - flattened list [worker1_t1s1, worker1_t1s2, ...]
+            ls_sc: Shift change indicators
+            scale: Scaling factor for normalization
+        """
         consistency = sum(ls_sc)
         consistency_norm = sum(ls_sc) / (len(self.nurses) * scale)
-        sublist_length = len(lst) // len(self.nurses)
-        p_values = [lst[i * sublist_length:(i + 1) * sublist_length] for i in range(len(self.nurses))]
-        x_values = [[1.0 if value > 0.0 else 0.0 for value in sublist] for sublist in p_values]
-        u_results = round(sum(self.u[t, k].X for t in self.days for k in self.shifts), 3)
-        sum_xWerte = [sum(row[i] for row in x_values) for i in range(len(x_values[0]))]
-
-        comparison_result = [
-            max(0, self.demand_values[i] - sum_xWerte[i])
-            for i in range(len(self.demand_values))
-        ]
-
-        undercoverage = u_results
-        understaffing = round(sum(comparison_result), 5)
-        perfloss = round(undercoverage - understaffing, 5)
+        
+        # Expected length: n_workers * n_days * n_shifts
+        n_workers = len(self.nurses)
+        n_days = len(self.days)
+        n_shifts = len(self.shifts)
+        expected_length = n_workers * n_days * n_shifts
+        
+        # Validate and fix length mismatch (can happen with heterogeneous groups)
+        if len(lst) != expected_length:
+            print(f"Warning: lst length ({len(lst)}) != expected ({expected_length}). Padding/truncating.")
+            if len(lst) < expected_length:
+                lst = list(lst) + [0.0] * (expected_length - len(lst))
+            else:
+                lst = lst[:expected_length]
+        
+        # Calculate perf_loss: U^Perf = Σ(1-p) for all p > 0
+        # This is the capacity lost due to reduced performance
+        perfloss = round(sum(1.0 - p for p in lst if p > 0), 5)
+        
+        # Undercoverage from u-variables in MP (total shortage including perf effect)
+        undercoverage = round(sum(self.u[t, k].X for t in self.days for k in self.shifts), 3)
+        
+        # Understaffing = undercoverage - perfloss
+        # This represents shortage due to insufficient worker assignments (not performance)
+        understaffing = round(max(0, undercoverage - perfloss), 5)
 
         undercoverage_norm = undercoverage / (len(self.nurses) * scale)
         understaffing_norm = understaffing / (len(self.nurses) * scale)
