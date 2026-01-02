@@ -29,7 +29,7 @@ for epsilon in [0.06]:
     for chi in [5]:
         for len_I in [100]:
             for pattern in ['Medium']:
-                for scenario in range(1, 26):
+                for scenario in range(1, 2):
                     if pattern == 'Medium':
                         prob = 1.0
                     elif pattern == 'High':
@@ -170,7 +170,7 @@ for epsilon in [0.06]:
 
                     results = pd.concat([results, result], ignore_index=True)
 
-results.to_excel(f'results/DD_{datetime.now().strftime("%d_%m_%Y_%H-%M")}.xlsx', index=False)
+results.to_excel(f'results/Test_{datetime.now().strftime("%d_%m_%Y_%H-%M")}.xlsx', index=False)
 
 print(results)
 print(f"")

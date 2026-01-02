@@ -230,22 +230,26 @@ class MasterProblem:
         return self.model.ObjVal
 
     def calc_behavior(self, lst, ls_sc, scale):
+        """
+        Calculate behavior metrics.
+        
+        Key insight: undercoverage = understaffing + perf_loss
+        - undercoverage: from u-variables in MP (total shortage)
+        - perf_loss: U^Perf = Σ(1-p) for all working shifts (p>0)
+        - understaffing: undercoverage - perf_loss
+        """
         consistency = sum(ls_sc)
         consistency_norm = sum(ls_sc) / (len(self.nurses) * scale)
-        sublist_length = len(lst) // len(self.nurses)
-        p_values = [lst[i * sublist_length:(i + 1) * sublist_length] for i in range(len(self.nurses))]
-        x_values = [[1.0 if value > 0.0 else 0.0 for value in sublist] for sublist in p_values]
-        u_results = round(sum(self.u[t, k].X for t in self.days for k in self.shifts), 3)
-        sum_xWerte = [sum(row[i] for row in x_values) for i in range(len(x_values[0]))]
-
-        comparison_result = [
-            max(0, self.demand_values[i] - sum_xWerte[i])
-            for i in range(len(self.demand_values))
-        ]
-
-        undercoverage = u_results
-        understaffing = round(sum(comparison_result), 5)
-        perfloss = round(undercoverage - understaffing, 5)
+        
+        # Calculate perf_loss: U^Perf = Σ(1-p) for all p > 0
+        # This is the capacity lost due to reduced performance
+        perfloss = round(sum(1.0 - p for p in lst if p > 0), 5)
+        
+        # Undercoverage from u-variables in MP
+        undercoverage = round(sum(self.u[t, k].X for t in self.days for k in self.shifts), 3)
+        
+        # Understaffing = undercoverage - perfloss (can't be negative)
+        understaffing = round(max(0, undercoverage - perfloss), 5)
 
         undercoverage_norm = undercoverage / (len(self.nurses) * scale)
         understaffing_norm = understaffing / (len(self.nurses) * scale)
