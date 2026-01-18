@@ -375,7 +375,8 @@ def run_single_scenario(scenario_key, scenario_config, seeds=range(1, 26), run_n
               f"std={np.std([r['shift_changes_total'] for r in bsv_results]):.2f}")
         print(f"  Gap:              mean={np.mean([r['gap'] for r in bsv_results]):.2f}%")
         print(f"  Time:             mean={np.mean([r['time'] for r in bsv_results]):.1f}s")
-        print(f"  Gini (Perf Loss): mean={np.mean([r['gini_perf_loss'] for r in bsv_results]):.4f}")
+        print(f"  Gini (Perf Loss): mean={np.mean([r['gini_perf_loss'] for r in bsv_results]):.4f}, "
+              f"std={np.std([r['gini_perf_loss'] for r in bsv_results]):.4f}")
     
     if mlsv_results:
         print(f"\n{'MLSV Model (n={})'.format(len(mlsv_results)):<25}")
@@ -449,7 +450,7 @@ def print_analysis_tables(all_results):
     print("Table Z: Fairness metrics across model variants")
     print("-"*60)
     
-    print(f"{'Model Variant':<20} {'Gini':>8} {'90/10 Ratio':>12} {'CV':>8}")
+    print(f"{'Model Variant':<20} {'Gini Mean':>10} {'Gini Std':>10} {'90/10 Mean':>12} {'90/10 Std':>10} {'CV':>8}")
     print("-"*60)
     
     for scenario_key in ['homogen', 'heterogen_3cluster']:
@@ -459,10 +460,15 @@ def print_analysis_tables(all_results):
             runs = [r for r in all_results[scenario_key] if r['model'] == model]
             if runs:
                 name = f"{scenario_key[:8]}-{model}"
-                gini = np.mean([r['gini_perf_loss'] for r in runs])
-                ratio = np.mean([r.get('ratio_90_10_perf', 0) for r in runs])
+                gini_mean = np.mean([r['gini_perf_loss'] for r in runs])
+                gini_std = np.std([r['gini_perf_loss'] for r in runs])
+                
+                ratios = [r.get('ratio_90_10_perf', 0) for r in runs]
+                ratio_mean = np.mean(ratios)
+                ratio_std = np.std(ratios)
+                
                 cv = np.mean([r['cv_perf_loss'] for r in runs])
-                print(f"{name:<20} {gini:>8.4f} {ratio:>12.2f} {cv:>8.4f}")
+                print(f"{name:<20} {gini_mean:>10.4f} {gini_std:>10.4f} {ratio_mean:>12.2f} {ratio_std:>10.2f} {cv:>8.4f}")
     
     # ===== Table 4: Sensitivity Analysis =====
     sensitivity_scenarios = ['none', 'low', 'moderate', 'high']

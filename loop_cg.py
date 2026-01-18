@@ -27,7 +27,7 @@ start_time = time.time()
 
 # ========== HETEROGENEOUS WORKER GROUPS CONFIGURATION ==========
 # Set to True to use heterogeneous worker groups, False for homogeneous
-use_heterogeneous = True
+use_heterogeneous = False
 
 # Fraction string defining group proportions (must sum to 1)
 group_fractions = "1/4,1/4,1/4,1/4"
@@ -45,9 +45,9 @@ group_params = [
 # Loop
 for epsilon in [0.06]:
     for chi in [5]:
-        for len_I in [50]:
+        for len_I in [100]:
             for pattern in ['Medium']:
-                for scenario in range(1, 2):
+                for scenario in range(1, 26):
                     if pattern == 'Medium':
                         prob = 1.0
                     elif pattern == 'High':
@@ -210,4 +210,16 @@ print("SUMMARY: CG+bidir Results")
 print("=" * 80)
 for idx, row in results.iterrows():
     print(f"Scenario {row['scenario']}: obj={row['objval']:.2f}, LB={row['lbound']:.2f}, gap={row['gap']:.2f}%, iter={row['iteration']}, time={row['time_total']:.1f}s")
+print("=" * 80)
+
+# Gini Statistics
+print("\n" + "=" * 80)
+print("GINI COEFFICIENT STATISTICS (Mean +/- Std Dev)")
+print("=" * 80)
+gini_cols = ['gini_sc_behavior', 'gini_perf_behavior', 'gini_sc_naive', 'gini_perf_naive']
+for col in gini_cols:
+    if col in results.columns:
+        mean_val = results[col].mean()
+        std_val = results[col].std()
+        print(f"{col:25s}: {mean_val:.4f} +/- {std_val:.4f}")
 print("=" * 80)
