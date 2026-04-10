@@ -17,7 +17,7 @@ def main():
     results_cg_time_ip = df_cg.groupby(['I', 'pattern'])['time_ip'].agg(['mean', 'std'])
     results_cg_iter = df_cg.groupby(['I', 'pattern'])['iteration'].agg(['mean', 'std'])
     
-    # LB/UB (nicht fuer die Tabelle)
+    # LB/UB (not for the table)
     results_comp_obj = df_comp.groupby(['I', 'pattern'])[['incumbent', 'lower_bound']].agg(['mean', 'std'])
     results_cg_obj = df_cg.groupby(['I', 'pattern'])[['objval', 'lbound']].agg(['mean', 'std'])
     

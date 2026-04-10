@@ -39,7 +39,7 @@ for epsilon in [0.06]:
                         'K': K + [np.nan] * (max(len(I), len(T), len(K)) - len(K))
                     })
 
-                    demand_dict = generate_dict_from_excel('data/demand_scenarios.xlsx', len(I), pattern, scenario)
+                    demand_dict = generate_dict_from_excel('data/demand_data.xlsx', len(I), pattern, scenario)
                     eps = epsilon
                     print('demand_dict', demand_dict)
 

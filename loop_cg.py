@@ -48,7 +48,7 @@ for epsilon in [0.06]:
                     })
 
                     random.seed = 2
-                    demand_dict = generate_dict_from_excel('data/demand_scenarios.xlsx', len(I), pattern, scenario=scenario)
+                    demand_dict = generate_dict_from_excel('data/demand_data.xlsx', len(I), pattern, scenario=scenario)
 
                     eps = epsilon
 

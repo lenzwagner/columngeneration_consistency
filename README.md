@@ -12,6 +12,8 @@ This project implements a Column Generation algorithm for solving Nurse Rosterin
 - **Column Generation**: Efficient decomposition approach for large-scale scheduling
 - **Numba-Accelerated Labeling**: Fast dynamic programming solver using Numba JIT compilation
 - **Flexible Demand Patterns**: Supports different demand scenarios (Low, Medium, High)
+- **LaTeX Integration**: Automatic generation of TikZ plots for performance visualization
+- **Standardized Codebase**: Fully localized in English for better maintainability
 
 ## Main Components
 
@@ -30,10 +32,11 @@ This project implements a Column Generation algorithm for solving Nurse Rosterin
 
 ### Utility Modules
 
-- **Utils/setup.py**: Configuration and setup
-- **Utils/demand.py**: Demand pattern generation
+- **Utils/setup.py**: Configuration and self-contained static data migration
+- **Utils/demand.py**: Demand pattern generation and extraction
 - **Utils/compactsolver.py**: Compact MIP formulation solver
 - **Utils/aggundercover.py**: Undercoverage aggregation utilities
+- **Utils/Plots/plots.py**: Visualization utilities and results plotting
 
 ## Requirements
 
@@ -112,6 +115,7 @@ Results are saved in:
 
 - `results/`: Excel files with optimization results
 - Metrics include: undercoverage, consistency, performance loss, Gini coefficients
+- `performance_plot.tex`: Generated TikZ figures for LaTeX integration
 
 ## Project Structure
 
@@ -126,9 +130,9 @@ columngeneration_consistency/
 ├── cg_naive.py                # Baseline CG
 ├── loop_cg.py                 # Main execution script
 ├── loop_compact.py            # Compact model execution
-├── data/                      # Input data (demand scenarios)
-├── results/                   # Output results
-└── Utils/                     # Utility functions
+├── data/                      # Input data (demand_data.xlsx)
+├── results/                   # Output results and analysis
+└── Utils/                     # Utility functions and plots
 ```
 
 ## License

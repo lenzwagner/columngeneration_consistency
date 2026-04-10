@@ -4,11 +4,11 @@ import ast
 import numpy as np
 
 def main():
-    # Lade die Datei
+    # Load the file
     file_path = 'results_analysis.xlsx'
     
-    # Falls man das Skript direkt im Behavior Ordner ausfuehrt, liegt die Excel evtl im computational Ordner
-    # Oder im Stammverzeichnis des Repos
+    # If the script is run directly in the Behavior folder, the Excel might be in the computational folder
+    # Or in the root directory of the repo
     possible_paths = [
         'results_analysis.xlsx',
         'results/Behavior/results_analysis.xlsx',
@@ -21,7 +21,7 @@ def main():
             break
             
     if not file_path:
-        print(f"Fehler: Datei nicht gefunden. Geprueft: {possible_paths}")
+        print(f"Error: File not found. Checked: {possible_paths}")
         return
             
     df = pd.read_excel(file_path)
@@ -41,7 +41,7 @@ def main():
         'top10_sc'
     ]
     
-    print("=== Vergleichende Analyse: Behavior vs Naive ===\n")
+    print("=== Comparative Analysis: Behavior vs Naive ===\n")
     
     summary_dfs = []
     
@@ -61,7 +61,7 @@ def main():
             print(stats.to_string())
             print("\n")
         else:
-            print(f"Warnung: Spalten fuer '{metric}' nicht in der Datei gefunden.\n")
+            print(f"Warning: Columns for '{metric}' not found in the file.\n")
             
     if summary_dfs:
         final_df = pd.concat(summary_dfs)
@@ -70,7 +70,7 @@ def main():
         final_df.reset_index(inplace=True)
         final_df.rename(columns={'index': 'metric'}, inplace=True)
         
-        # Zusatz: Reduction berechnen und einfuegen
+        # Addition: Calculate and insert reduction
         try:
             mean_naive = final_df.loc[final_df['metric'] == 'undercover_naive', 'mean'].values[0]
             mean_behavior = final_df.loc[final_df['metric'] == 'undercover_behavior', 'mean'].values[0]
@@ -79,11 +79,11 @@ def main():
             new_row = pd.DataFrame([{'metric': 'reduction', 'min': round(rel_reduction * 100, 2)}])
             final_df = pd.concat([final_df, new_row], ignore_index=True)
         except Exception as e:
-            print(f"Konnte 'reduction' nicht anhaengen: {e}")
+            print(f"Could not append 'reduction': {e}")
         
         output_file = 'results_analysis_summary.csv'
         final_df.to_csv(output_file, index=False)
-        print(f"Statistiken wurden exportiert nach: {output_file}\n")
+        print(f"Statistics were exported to: {output_file}\n")
     
     # === TikZ Plot Export ===
     generate_tikz_plot(df)
@@ -93,9 +93,7 @@ def generate_tikz_plot(df):
     T = 28
     
     def get_stats(col_name):
-        if col_name not in df.columns:
-            return None, None, None
-            
+        # Collect all lists from the column
         all_lists = []
         for raw in df[col_name].dropna():
             try:
@@ -108,9 +106,9 @@ def generate_tikz_plot(df):
         if not all_lists:
             return None, None, None
             
-        # Jede Liste sind 28 Tage a 100 Arbeiter
-        # Struktur: [W1_D1, W1_D2, ..., W1_D28, W2_D1, ...]
-        # Wir wollen pro Tag (1-28) die Statistik ueber ALLE Arbeiter in ALLEN Szenarien
+        # Each list consists of 28 days for 100 workers
+        # Structure: [W1_D1, W1_D2, ..., W1_D28, W2_D1, ...]
+        # We want the statistics per day (1-28) across ALL workers in ALL scenarios
         n_scenarios = len(all_lists)
         all_data = np.array(all_lists).reshape(n_scenarios * 100, 28)
         
@@ -122,7 +120,7 @@ def generate_tikz_plot(df):
     mean_n, std_n, _ = get_stats('p_list_naive')
 
     if mean_b is None or mean_n is None:
-        print("Warnung: Konnte p_list Daten fuer TikZ-Export nicht finden oder verarbeiten.")
+        print("Warning: Could not find or process p_list data for TikZ export.")
         return
 
     def fmt_coords(arr):
@@ -133,7 +131,7 @@ def generate_tikz_plot(df):
     upper_n = np.clip(mean_n + std_n, 0, 1)
     lower_n = np.clip(mean_n - std_n, 0, 1)
 
-    # Hilfswerte fuer Pfeile (Tag 14 und 26)
+    # Auxiliary values for arrows (Day 14 and 26)
     idx14, idx26 = 13, 25
     gap14 = (mean_b[idx14] - mean_n[idx14]) / mean_b[idx14] * 100
     gap26 = (mean_b[idx26] - mean_n[idx26]) / mean_b[idx26] * 100
@@ -190,18 +188,18 @@ def generate_tikz_plot(df):
 				ytick pos=left
 			]
 						    
-			% Behavioral Scheduling Ansatz (orange)
+			% Behavioral Scheduling Approach (orange)
 			\addplot[thick, customOrange2] coordinates { """ + fmt_coords(mean_b) + r""" };
 						    
-			% Standardabweichung BAP
+			% Standard deviation BAP
 			\addplot[name path=upper1, draw=none] coordinates { """ + fmt_coords(upper_b) + r""" };
 			\addplot[name path=lower1, draw=none] coordinates { """ + fmt_coords(lower_b) + r""" };
 			\addplot[customOrange2!30, opacity=0.6] fill between[of=upper1 and lower1];
 						
-			% Naive Ansatz (blau)
+			% Naive Approach (blue)
 			\addplot[thick, customBlue2] coordinates { """ + fmt_coords(mean_n) + r""" };
 						
-			% Standardabweichung Naive
+			% Standard deviation Naive
 			\addplot[name path=upper2, draw=none] coordinates { """ + fmt_coords(upper_n) + r""" };
 			\addplot[name path=lower2, draw=none] coordinates { """ + fmt_coords(lower_n) + r""" };
 			\addplot[customBlue2!30, opacity=0.6] fill between[of=upper2 and lower2];
@@ -224,7 +222,7 @@ def generate_tikz_plot(df):
 
     with open('performance_plot.tex', 'w') as f:
         f.write(tikz_code)
-    print("TikZ Plot wurde in 'performance_plot.tex' exportiert.")
+    print("TikZ Plot was exported to 'performance_plot.tex'.")
 
 
 if __name__ == "__main__":

@@ -38,8 +38,7 @@ def analyze_results():
              print("Critical grouping columns missing. Aborting.")
              return
 
-    # Define aggregation functions
-    # mean, median, min, max, spannweite (range), stnadardabweichung (std), varianz (var), IQR 25, IQR 75
+    # mean, median, min, max, range, standard deviation (std), variance (var), IQR 25, IQR 75
     
     def range_func(x):
         return x.max() - x.min()
@@ -55,7 +54,7 @@ def analyze_results():
         ('median', 'median'),
         ('min', 'min'),
         ('max', 'max'),
-        ('spannweite', range_func),
+        ('range', range_func),
         ('std', 'std'),
         ('var', 'var'),
         ('25%', q25),
