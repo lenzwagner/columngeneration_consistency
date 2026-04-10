@@ -48,7 +48,7 @@ def analyze_results(filepath: str):
     print("=" * 80)
     
     # Print comparison summary
-    print("\n📊 COMPARISON SUMMARY (Behavior vs Naive):")
+    print("\n📊 COMPARISON SUMMARY (behavioral_study vs Naive):")
     print("-" * 50)
     
     comparisons = [
@@ -66,8 +66,8 @@ def analyze_results(filepath: str):
             behav_mean = df[behav_col].mean()
             diff = naive_mean - behav_mean
             pct = (diff / naive_mean) * 100 if naive_mean != 0 else 0
-            better = "Behavior ✓" if behav_mean < naive_mean else "Naive ✓"
-            print(f"  {label:15s}: Naive={naive_mean:8.2f}  Behavior={behav_mean:8.2f}  Δ={diff:+8.2f} ({pct:+5.1f}%)  [{better}]")
+            better = "behavioral_study ✓" if behav_mean < naive_mean else "Naive ✓"
+            print(f"  {label:15s}: Naive={naive_mean:8.2f}  behavioral_study={behav_mean:8.2f}  Δ={diff:+8.2f} ({pct:+5.1f}%)  [{better}]")
     
     print("-" * 50)
     

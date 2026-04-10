@@ -7,7 +7,7 @@ def main():
     results_comp = df_comp.groupby(['I', 'pattern'])['gap'].agg(['mean', 'std'])
     
     # --- results_analysis.xlsx ---
-    df_cg = pd.read_excel('results_analysis.xlsx')
+    df_cg = pd.read_excel('results_cg.xlsx')
     df_cg['gap'] = df_cg['gap']
     
     results_cg_gap = df_cg.groupby(['I', 'pattern'])['gap'].agg(['mean', 'std'])

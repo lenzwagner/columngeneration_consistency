@@ -7,12 +7,12 @@ def main():
     # Load the file
     file_path = 'results_analysis.xlsx'
     
-    # If the script is run directly in the Behavior folder, the Excel might be in the computational folder
+    # If the script is run directly in the behavioral_study folder, the Excel might be in the computational_study folder
     # Or in the root directory of the repo
     possible_paths = [
         'results_analysis.xlsx',
-        'results/Behavior/results_analysis.xlsx',
-        '../computational/results_analysis.xlsx'
+        'results/behavioral_study/results_analysis.xlsx',
+        '../computational_study/results_analysis.xlsx'
     ]
     file_path = None
     for p in possible_paths:
@@ -41,7 +41,7 @@ def main():
         'top10_sc'
     ]
     
-    print("=== Comparative Analysis: Behavior vs Naive ===\n")
+    print("=== Comparative Analysis: behavioral_study vs Naive ===\n")
     
     summary_dfs = []
     
