@@ -51,13 +51,18 @@ def evaluate_inequality(lst, T, I_given=None):
 
     if s == 0:
         gini = 0.0
+        top_10_share = 0.0
     else:
         x_sorted = sorted(values)
         numerator = 2 * sum((i+1) * xi for i, xi in enumerate(x_sorted))
         denom = n * s
         gini = numerator / denom - (n + 1) / n
+        
+        # Top 10% calculation
+        num_top_10 = max(1, int(round(n * 0.1)))
+        top_10_share = sum(x_sorted[-num_top_10:]) / s
 
-    return block_sums, round(max_min_spread, 3), load_share, round(gini, 3)
+    return block_sums, round(max_min_spread, 3), load_share, round(gini, 3), round(top_10_share, 3)
 
 
 # **** Print Results Table ****

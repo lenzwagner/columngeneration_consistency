@@ -5,7 +5,7 @@ import os
 def analyze_results():
     # Use absolute path or relative to script location
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(script_dir, 'Results_Compact.xlsx')
+    file_path = os.path.join(script_dir, 'results_comp_agg.xlsx')
     
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
@@ -96,7 +96,7 @@ def analyze_results():
         # Set new index to include Metric, so we have I, Pattern, Metric as rows
         final_df.set_index(['I', 'pattern', 'Metric'], inplace=True)
         
-        output_file = os.path.join(script_dir, 'Results_Analysis_Compact.xlsx')
+        output_file = os.path.join(script_dir, 'results_comp_agg.xlsx')
         try:
             final_df.to_excel(output_file)
             print(f"\nSuccessfully wrote analysis results to: {output_file}")

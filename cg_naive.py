@@ -208,9 +208,9 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
 
     # Inequality
     L_perf = [x * (1 - p) for x, p in zip(ls_x, ls_perf)]
-    results_ineq_sc, spread_sc, load_share_sc, gini_sc = evaluate_inequality(ls_sc, len(master.days),
+    results_ineq_sc, spread_sc, load_share_sc, gini_sc, top10_sc = evaluate_inequality(ls_sc, len(master.days),
                                                                              len(master.nurses))
-    results_ineq_perf, spread_perf, load_share_perf, gini_perf = evaluate_inequality(
+    results_ineq_perf, spread_perf, load_share_perf, gini_perf, top10_perf = evaluate_inequality(
         [sum(L_perf[i:i + 3]) for i in range(0, len(L_perf), 3)], len(master.days), len(master.nurses))
 
     # shift blocks
@@ -237,9 +237,11 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
         spread_sc,
         load_share_sc,
         gini_sc,
+        top10_sc,
         results_ineq_perf,
         spread_perf,
         load_share_perf,
         gini_perf,
+        top10_perf,
         shift_blocks
     )

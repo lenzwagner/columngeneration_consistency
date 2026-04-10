@@ -13,13 +13,12 @@ results = pd.DataFrame(columns=['I', 'T', 'K', 'pattern', 'scenario', 'prob', 'e
                                 'perf_norm_behavior', 'understaffing_behavior', 'understaffing_norm_behavior', 'undercover_naive', 'undercover_norm_naive', 'cons_naive',
                                 'cons_norm_naive', 'perf_naive', 'perf_norm_naive', 'understaffing_naive', 'understaffing_norm_naive', 'shift_undercover_naive',
                                 'shift_undercover_behavior', 'perf_list_behavior', 'perf_list_naive', 'cons_list_behavior', 'cons_list_naive', 'p_list_behavior', 'p_list_naive',
-                                'x_list_behavior', 'x_list_naive', 'r_list_behavior', 'r_list_naive', 'daily_undercover_behavior', 'daily_undercover_naive', 'results_ineq_sc_behavior', 'results_ineq_sc_naive', 'spread_sc_behavior',
-                                'spread_sc_naive', 'load_share_sc_behavior', 'load_share_sc_naive', 'gini_sc_behavior', 'gini_sc_naive', 'results_ineq_perf_behavior',
+                                'spread_sc_naive', 'load_share_sc_behavior', 'load_share_sc_naive', 'gini_sc_behavior', 'gini_sc_naive', 'top10_sc_behavior', 'top10_sc_naive', 'results_ineq_perf_behavior',
                                 'results_ineq_perf_naive', 'spread_perf_behavior', 'spread_perf_naive', 'load_share_perf_behavior', 'load_share_perf_naive', 'gini_perf_behavior',
-                                'gini_perf_naive', 'shift_blocks_behavior', 'shift_blocks_naive'])
+                                'gini_perf_naive', 'top10_perf_behavior', 'top10_perf_naive', 'shift_blocks_behavior', 'shift_blocks_naive', 'changes_sequence'])
 
 # Times and Parameter
-time_Limit, time_cg, time_cg_init, prob = 7200, 7200, 5, 1.0
+time_Limit, time_cg, time_cg_init, prob = 7200, 7200, 2, 1.0
 max_itr, output_len, mue, threshold = 200, 98, 1e-4, 6e-5
 
 start_time = time.time()
@@ -27,9 +26,9 @@ start_time = time.time()
 # Loop
 for epsilon in [0.06]:
     for chi in [5]:
-        for len_I in [100]:
-            for pattern in ['Medium']:
-                for scenario in range(1, 2):
+        for len_I in [50,100,150]:
+            for pattern in ['Low', 'Medium', 'High']:
+                for scenario in range(1, 26):
                     if pattern == 'Medium':
                         prob = 1.0
                     elif pattern == 'High':
@@ -65,8 +64,8 @@ for epsilon in [0.06]:
                      perfloss_norm_behavior, final_obj_behavior, final_lb, itr, lagrangeB, gap, time_sps, time_rmp, 
                      time_ip, ls_p_behavior, ls_sc_behavior, ls_perf_behavior, ls_x_behavior,
                      ls_r_behavior, undercoverage_per_shift_behavior, results_ineq_sc_behavior, spread_sc_behavior, 
-                     load_share_sc_behavior, gini_sc_behavior, results_ineq_perf_behavior,
-                     spread_perf_behavior, load_share_perf_behavior, gini_perf_behavior, 
+                     load_share_sc_behavior, gini_sc_behavior, top10_sc_behavior, results_ineq_perf_behavior,
+                     spread_perf_behavior, load_share_perf_behavior, gini_perf_behavior, top10_perf_behavior, 
                      shift_blocks_behavior) = column_generation_behavior(
                         data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi,
                                                 threshold, time_cg, I, T, K, prob, sp_solver='labeling_bidir', save_lp=True
@@ -81,8 +80,8 @@ for epsilon in [0.06]:
                     undercoverage_norm_naive, understaffing_norm_naive,
                     perfloss_norm_naive, final_obj_naive, ls_p_naive, ls_sc_naive, ls_perf_naive, ls_x_naive,
                     ls_r_naive, undercoverage_per_shift_naive, results_ineq_sc_naive, spread_sc_naive,
-                    load_share_sc_naive, gini_sc_naive, results_ineq_perf_naive,
-                    spread_perf_naive, load_share_perf_naive, gini_perf_naive, shift_blocks_naive) = column_generation_naive(data, demand_dict, 0, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi,
+                    load_share_sc_naive, gini_sc_naive, top10_sc_naive, results_ineq_perf_naive,
+                    spread_perf_naive, load_share_perf_naive, gini_perf_naive, top10_perf_naive, shift_blocks_naive) = column_generation_naive(data, demand_dict, 0, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi,
                                                 threshold, time_cg, I, T, K, eps, prob, sp_solver='labeling_bidir')
 
 
@@ -156,6 +155,8 @@ for epsilon in [0.06]:
                         'load_share_sc_naive': load_share_sc_naive,
                         'gini_sc_behavior': gini_sc_behavior,
                         'gini_sc_naive': gini_sc_naive,
+                        'top10_sc_behavior': top10_sc_behavior,
+                        'top10_sc_naive': top10_sc_naive,
                         'results_ineq_perf_behavior': results_ineq_perf_behavior,
                         'results_ineq_perf_naive': results_ineq_perf_naive,
                         'spread_perf_behavior': spread_perf_behavior,
@@ -164,8 +165,11 @@ for epsilon in [0.06]:
                         'load_share_perf_naive': load_share_perf_naive,
                         'gini_perf_behavior': gini_perf_behavior,
                         'gini_perf_naive': gini_perf_naive,
+                        'top10_perf_behavior': top10_perf_behavior,
+                        'top10_perf_naive': top10_perf_naive,
                         'shift_blocks_behavior': shift_blocks_behavior,
                         'shift_blocks_naive': shift_blocks_naive,
+                        'changes_sequence': combine_lists(ls_x_behavior, ls_x_naive, len(T), len(I)),
                     }])
 
                     results = pd.concat([results, result], ignore_index=True)

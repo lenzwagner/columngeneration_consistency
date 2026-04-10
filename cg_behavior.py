@@ -242,12 +242,12 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
 
     # Inequality
     L_perf = [x * (1 - p) for x, p in zip(ls_x, ls_perf)]
-    results_ineq_sc, spread_sc, load_share_sc, gini_sc = evaluate_inequality(ls_sc, len(master.days), len(master.nurses))
-    results_ineq_perf, spread_perf, load_share_perf, gini_perf = evaluate_inequality([sum(L_perf[i:i + 3]) for i in range(0, len(L_perf), 3)], len(master.days), len(master.nurses))
+    results_ineq_sc, spread_sc, load_share_sc, gini_sc, top10_sc = evaluate_inequality(ls_sc, len(master.days), len(master.nurses))
+    results_ineq_perf, spread_perf, load_share_perf, gini_perf, top10_perf = evaluate_inequality([sum(L_perf[i:i + 3]) for i in range(0, len(L_perf), 3)], len(master.days), len(master.nurses))
 
     # shift blocks
     shift_blocks = analyze_and_plot_blocks(ls_x, len(master.nurses), len(master.days), len(master.shifts))
 
     undercoverage_ab, understaffing_ab, perfloss_ab, consistency_ab, consistency_norm_ab, undercoverage_norm_ab, understaffing_norm_ab, perfloss_norm_ab = master.calc_behavior(ls_perf, ls_sc, scale)
 
-    return round(undercoverage_ab, 5), round(understaffing_ab, 5), round(perfloss_ab, 5), round(consistency_ab, 5), round(consistency_norm_ab, 5), round(undercoverage_norm_ab, 5), round(understaffing_norm_ab, 5), round(perfloss_norm_ab, 5),  round(final_obj, 5), round(final_lb, 5), itr, lagranigan_bound, integrality_gap_pct, time_in_sps, time_in_rmp, time_in_ip, ls_p, ls_sc, ls_perf, ls_x, ls_rec, [0.0 if abs(round(x, 3)) == 0 else round(x, 2) for x in master.getUndercoverage()], results_ineq_sc, spread_sc, load_share_sc, gini_sc, results_ineq_perf, spread_perf, load_share_perf, gini_perf, shift_blocks
+    return round(undercoverage_ab, 5), round(understaffing_ab, 5), round(perfloss_ab, 5), round(consistency_ab, 5), round(consistency_norm_ab, 5), round(undercoverage_norm_ab, 5), round(understaffing_norm_ab, 5), round(perfloss_norm_ab, 5),  round(final_obj, 5), round(final_lb, 5), itr, lagranigan_bound, integrality_gap_pct, time_in_sps, time_in_rmp, time_in_ip, ls_p, ls_sc, ls_perf, ls_x, ls_rec, [0.0 if abs(round(x, 3)) == 0 else round(x, 2) for x in master.getUndercoverage()], results_ineq_sc, spread_sc, load_share_sc, gini_sc, top10_sc, results_ineq_perf, spread_perf, load_share_perf, gini_perf, top10_perf, shift_blocks
