@@ -33,11 +33,7 @@ for epsilon in [0.06]:
                     I = list(range(1, len_I + 1))
                     K = [1, 2, 3]
 
-                    data = pd.DataFrame({
-                        'I': I + [np.nan] * (max(len(I), len(T), len(K)) - len(I)),
-                        'T': T + [np.nan] * (max(len(I), len(T), len(K)) - len(T)),
-                        'K': K + [np.nan] * (max(len(I), len(T), len(K)) - len(K))
-                    })
+                    data = build_data_frame(I, T, K)
 
                     demand_dict = generate_dict_from_excel('data/demand_data.xlsx', len(I), pattern, scenario)
                     eps = epsilon

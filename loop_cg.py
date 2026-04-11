@@ -41,11 +41,7 @@ for epsilon in [0.06]:
                     I = list(range(1, len_I + 1))
                     K = [1, 2, 3]
 
-                    data = pd.DataFrame({
-                        'I': I + [np.nan] * (max(len(I), len(T), len(K)) - len(I)),
-                        'T': T + [np.nan] * (max(len(I), len(T), len(K)) - len(T)),
-                        'K': K + [np.nan] * (max(len(I), len(T), len(K)) - len(K))
-                    })
+                    data = build_data_frame(I, T, K)
 
                     random.seed = 2
                     demand_dict = generate_dict_from_excel('data/demand_data.xlsx', len(I), pattern, scenario=scenario)
@@ -89,13 +85,8 @@ for epsilon in [0.06]:
                     shift_undercover_naive = create_dict_from_list(undercoverage_per_shift_naive, len(T), len(K))
 
 
-                    daily_undercover_naive = {}
-                    for (i, j), value in shift_undercover_naive.items():
-                        daily_undercover_naive[i] = daily_undercover_naive.get(i, 0) + value
-
-                    daily_undercover_behavior = {}
-                    for (i, j), value in shift_undercover_behavior.items():
-                        daily_undercover_behavior[i] = daily_undercover_behavior.get(i, 0) + value
+                    daily_undercover_naive = dict_reducer(shift_undercover_naive)
+                    daily_undercover_behavior = dict_reducer(shift_undercover_behavior)
 
 
                     # Data frame

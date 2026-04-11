@@ -119,9 +119,6 @@ def plot_undercover_d(ls, days, shifts, pt, filename_suffix=''):
     plt.savefig(f'images/undercover/{base_filename}.png', bbox_inches='tight')
     plt.show()
 
-import matplotlib.pyplot as plt
-import numpy as np
-
 def plot_relative_undercover(ls1, ls2, demand_dict, days, shifts, pt, filename_suffix=''):
     daily_relative_undercover1 = []
     daily_relative_undercover2 = []

@@ -271,9 +271,7 @@ class MasterProblem:
         u_results = round(sum(self.u[t, k].X for t in self.days for k in self.shifts), 5)
         sum_xWerte = [sum(row[i] for row in x_values) for i in range(len(x_values[0]))]
         self.sum_xWerte = sum_xWerte
-        self.sum_all_doctors = 0
         self.sum_values = sum(self.demand_values)
-        self.cumulative_sum = [0]
         self.doctors_cumulative_multiplied = []
         self.vals = self.demand_values
         self.comp_result = []
@@ -283,7 +281,6 @@ class MasterProblem:
             else:
                 self.comp_result.append(1)
         index = 0
-        self.doctors_cumulative_multiplied = []
         cumulative_total = [0] * (len(self.days) * len(self.shifts))
         for i in self.nurses:
             doctor_values = sc_values2[index]

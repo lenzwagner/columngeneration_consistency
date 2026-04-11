@@ -8,8 +8,6 @@ def main():
     
     # --- results_analysis.xlsx ---
     df_cg = pd.read_excel('results_cg.xlsx')
-    df_cg['gap'] = df_cg['gap']
-    
     results_cg_gap = df_cg.groupby(['I', 'pattern'])['gap'].agg(['mean', 'std'])
     results_cg_time = df_cg.groupby(['I', 'pattern'])['time_total'].agg(['mean', 'std'])
     results_cg_time_rmp = df_cg.groupby(['I', 'pattern'])['time_rmp'].agg(['mean', 'std'])

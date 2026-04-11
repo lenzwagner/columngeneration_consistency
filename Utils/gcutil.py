@@ -20,7 +20,6 @@ def generate_dict_from_excel(file_path, value_I, pattern, scenario):
         print("No data.")
         return {}
 
-import math
 def evaluate_inequality(lst, T, I_given=None):
     # Determine I
     if I_given is None:
@@ -90,10 +89,8 @@ def printResults(itr, total_time, time_problem, nr, optimal_ip, optimal_lp, lagr
     gap = 0.0 if abs(gap) < 1e-9 else gap
     gap_str = f"{gap}%"
 
-    if gap == 0:
-        print("*{:^{nr}}*".format("LP-Optimality GAP: " + str(gap_str), nr=nr))
-    else:
-        print("*{:^{nr}}*".format("LP-Optimality GAP: " + str(gap_str), nr=nr))
+    print("*{:^{nr}}*".format("LP-Optimality GAP: " + str(gap_str), nr=nr))
+    if gap != 0:
         print("*{:^{nr}}*".format("Column Generation does not prove the global optimal solution!", nr=nr))
     print("*{:^{nr}}*".format("", nr=nr))
     print("*{:^{nr}}*".format("Solving Times:", nr=nr))
@@ -528,6 +525,15 @@ def process_list_shuffle(input_list, T):
     random.shuffle(sublists)  # Shuffle the sublists randomly
     flat_list = [item for sublist in sublists for item in sublist]
     return flat_list
+
+def build_data_frame(I, T, K):
+    """Build the standard instance DataFrame from index lists I, T, K."""
+    pad = max(len(I), len(T), len(K))
+    return pd.DataFrame({
+        'I': I + [np.nan] * (pad - len(I)),
+        'T': T + [np.nan] * (pad - len(T)),
+        'K': K + [np.nan] * (pad - len(K))
+    })
 
 import matplotlib.pyplot as plt
 def analyze_and_plot_blocks(raw_data, num_workers, num_days, num_shifts, plt_show = False):
