@@ -1,11 +1,25 @@
 import pandas as pd
 from Utils.gcutil import create_individual_working_list
-import openpyxl
 
-# Sets
-work = pd.read_excel(r'./data/Arzt.xlsx', sheet_name='Arzt')
-df = pd.read_excel(r'./data/NF.xlsx', sheet_name='NF')
-df1 = pd.read_excel(r'./data/NF.xlsx', sheet_name='Shift')
+# Sets (formerly loaded from data/Arzt.xlsx and data/NF.xlsx)
+# Arzt.xlsx – sheet 'Arzt'
+work = pd.DataFrame({
+    'Id':      list(range(1, 21)),
+    'WT':      [40.0, 40.0, 40.0, 40.0] + [None] * 16,
+    'Weekend': [1.0,  1.0,  1.0,  1.0]  + [None] * 16,
+})
+
+# NF.xlsx – sheet 'NF'
+df = pd.DataFrame({
+    'Day': list(range(1, 15)),
+})
+
+# NF.xlsx – sheet 'Shift'
+df1 = pd.DataFrame({
+    'Shift': [1, 2, 3],
+    'Hours': [8, 8, 8],
+})
+
 I = work['Id'].tolist()
 W_I = work['Weekend'].tolist()
 T = df['Day'].tolist()

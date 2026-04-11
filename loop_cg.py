@@ -117,13 +117,8 @@ for epsilon in [0.06]:
                     shift_undercover_naive = create_dict_from_list(undercoverage_per_shift_naive, len(T), len(K))
 
 
-                    daily_undercover_naive = {}
-                    for (i, j), value in shift_undercover_naive.items():
-                        daily_undercover_naive[i] = daily_undercover_naive.get(i, 0) + value
-
-                    daily_undercover_behavior = {}
-                    for (i, j), value in shift_undercover_behavior.items():
-                        daily_undercover_behavior[i] = daily_undercover_behavior.get(i, 0) + value
+                    daily_undercover_naive = dict_reducer(shift_undercover_naive)
+                    daily_undercover_behavior = dict_reducer(shift_undercover_behavior)
 
 
                     # Data frame

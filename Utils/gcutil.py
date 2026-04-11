@@ -20,7 +20,6 @@ def generate_dict_from_excel(file_path, value_I, pattern, scenario):
         print("No data.")
         return {}
 
-import math
 def evaluate_inequality(lst, T, I_given=None):
     # Determine I
     if I_given is None:
@@ -85,10 +84,8 @@ def printResults(itr, total_time, time_problem, nr, optimal_ip, optimal_lp, lagr
     gap = 0.0 if abs(gap) < 1e-9 else gap
     gap_str = f"{gap}%"
 
-    if gap == 0:
-        print("*{:^{nr}}*".format("LP-Optimality GAP: " + str(gap_str), nr=nr))
-    else:
-        print("*{:^{nr}}*".format("LP-Optimality GAP: " + str(gap_str), nr=nr))
+    print("*{:^{nr}}*".format("LP-Optimality GAP: " + str(gap_str), nr=nr))
+    if gap != 0:
         print("*{:^{nr}}*".format("Column Generation does not prove the global optimal solution!", nr=nr))
     print("*{:^{nr}}*".format("", nr=nr))
     print("*{:^{nr}}*".format("Solving Times:", nr=nr))
