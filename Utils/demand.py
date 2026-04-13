@@ -326,6 +326,6 @@ def plot_demand_bar_by_day2(demands, days, shifts, pt):
                 plt.text(xval, bar.get_y() + yval / 2, bar_label, ha='center', va='center', fontsize=6, color='white')
 
     plt.tight_layout()
-    plt.savefig('images/demand.eps', bbox_inches='tight')
+    #plt.savefig('images/demand.eps', bbox_inches='tight')
     plt.show()
 

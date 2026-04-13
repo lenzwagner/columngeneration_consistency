@@ -230,7 +230,7 @@ def run_single_scenario(scenario_key, scenario_config, seeds=range(1, 26), run_n
         print(f"\n--- Seed {seed}/{max(seeds)} ---")
         
         demand_dict = generate_dict_from_excel(
-            'data/demand_scenarios.xlsx', len(I), 'Medium', scenario=seed
+            'data/demand_data.xlsx', len(I), 'Medium', scenario=seed
         )
         
         eps = scenario_config['group_params'][0][0]
