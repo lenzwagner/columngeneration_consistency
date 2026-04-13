@@ -492,6 +492,70 @@ def print_analysis_tables(all_results):
                 print(f"{level:<12} {uc:>12.2f} {pl:>12.2f} {sc:>12.0f} {gini:>8.4f}")
 
 
+def save_summary_csv(all_results):
+    """Save key metrics for the paper text in a vertical CSV format (metric, value)."""
+    summary_data = []
+    
+    # 1. Baseline vs Heterogeneous (Homogen vs Heterogen 3-Cluster)
+    if 'homogen' in all_results and 'heterogen_3cluster' in all_results:
+        homo_bsv = [r for r in all_results['homogen'] if r['model'] == 'BSV']
+        hetero_bsv = [r for r in all_results['heterogen_3cluster'] if r['model'] == 'BSV']
+        
+        if homo_bsv and hetero_bsv:
+            # Undercoverage
+            h0_uc = np.mean([r['undercoverage'] for r in homo_bsv])
+            h1_uc = np.mean([r['undercoverage'] for r in hetero_bsv])
+            summary_data.append({'metric': 'baseline_undercoverage_mean', 'value': round(h0_uc, 2)})
+            summary_data.append({'metric': 'heterogeneous_undercoverage_mean', 'value': round(h1_uc, 2)})
+            summary_data.append({'metric': 'undercoverage_reduction_pct', 'value': round((h0_uc - h1_uc) / h0_uc * 100, 2)})
+            
+            # Shift Changes
+            h0_sc = np.mean([r['shift_changes_total'] for r in homo_bsv])
+            h1_sc = np.mean([r['shift_changes_total'] for r in hetero_bsv])
+            summary_data.append({'metric': 'baseline_shift_changes_mean', 'value': round(h0_sc, 2)})
+            summary_data.append({'metric': 'heterogeneous_shift_changes_mean', 'value': round(h1_sc, 2)})
+            
+            # Perf Loss
+            h0_pl = np.mean([r['perf_loss_total'] for r in homo_bsv])
+            h1_pl = np.mean([r['perf_loss_total'] for r in hetero_bsv])
+            summary_data.append({'metric': 'baseline_perf_loss_mean', 'value': round(h0_pl, 2)})
+            summary_data.append({'metric': 'heterogeneous_perf_loss_mean', 'value': round(h1_pl, 2)})
+            
+            # Gini
+            h0_gini = [r['gini_perf_loss'] for r in homo_bsv]
+            h1_gini = [r['gini_perf_loss'] for r in hetero_bsv]
+            summary_data.append({'metric': 'baseline_gini_perf_loss_mean', 'value': round(np.mean(h0_gini), 3)})
+            summary_data.append({'metric': 'baseline_gini_perf_loss_std', 'value': round(np.std(h0_gini), 3)})
+            summary_data.append({'metric': 'heterogeneous_gini_perf_loss_mean', 'value': round(np.mean(h1_gini), 3)})
+            summary_data.append({'metric': 'heterogeneous_gini_perf_loss_std', 'value': round(np.std(h1_gini), 3)})
+            
+            # Group specific (Worker-Type impact)
+            sample_g = hetero_bsv[0]['group_metrics']
+            mapping = {
+                'group_1': 'resilient',
+                'group_2': 'average',
+                'group_3': 'sensitive'
+            }
+            for g_id, label in mapping.items():
+                if g_id in sample_g:
+                    avg_perf = np.mean([r['group_metrics'][g_id]['avg_perf_loss'] for r in hetero_bsv])
+                    avg_sc = np.mean([r['group_metrics'][g_id]['avg_shift_changes'] for r in hetero_bsv])
+                    summary_data.append({'metric': f'avg_perf_loss_{label}', 'value': round(avg_perf, 3)})
+                    summary_data.append({'metric': f'avg_shift_changes_{label}', 'value': round(avg_sc, 3)})
+
+    # 2. High Heterogeneity
+    if 'high' in all_results:
+        high_bsv = [r for r in all_results['high'] if r['model'] == 'BSV']
+        if high_bsv:
+            summary_data.append({'metric': 'high_heterogeneity_undercoverage_mean', 'value': round(np.mean([r['undercoverage'] for r in high_bsv]), 2)})
+            summary_data.append({'metric': 'high_heterogeneity_gini_mean', 'value': round(np.mean([r['gini_perf_loss'] for r in high_bsv]), 3)})
+
+    df_summary = pd.DataFrame(summary_data)
+    filename = f'results/paper_text_metrics_{datetime.now().strftime("%d_%m_%Y_%H-%M")}.csv'
+    df_summary.to_csv(filename, index=False)
+    print(f"\nSummary CSV for paper text saved to: {filename}")
+
+
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
@@ -541,6 +605,9 @@ if __name__ == "__main__":
     
     df_all = pd.DataFrame(all_flat)
     df_all.to_excel(f'results/analysis_ALL_{datetime.now().strftime("%d_%m_%Y_%H-%M")}.xlsx', index=False)
+    
+    # Save summary CSV for paper text comparison
+    save_summary_csv(all_results)
     
     print(f"\nTotal execution time: {time.time() - start_time:.2f} seconds")
     print("="*80)
