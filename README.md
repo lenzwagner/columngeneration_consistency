@@ -20,10 +20,7 @@ This project implements a Column Generation algorithm for solving Nurse Rosterin
 ### Core Modules
 
 - **masterproblem.py**: Restricted Master Problem implementation using Gurobi
-- **subproblem.py**: MIP-based pricing problem for column generation
-- **subproblem_dp.py**: Label-setting dynamic programming solver
-- **subproblem_dp_optimized.py**: Numba-optimized DP solver with bidirectional labeling
-- **subproblem_factory.py**: Factory pattern for subproblem solver selection
+- **subproblem.py**: Unified subproblem module containing MIP, DP (Python), and Numba-optimized solvers, along with the solver factory function.
 
 ### Solution Approaches
 
@@ -122,10 +119,7 @@ Results are saved in:
 ```
 columngeneration_consistency/
 ├── masterproblem.py           # Restricted Master Problem
-├── subproblem.py              # MIP pricing problem
-├── subproblem_dp.py           # DP label-setting solver
-├── subproblem_dp_optimized.py # Numba-optimized DP solver
-├── subproblem_factory.py      # Solver factory
+├── subproblem.py              # Unified Pricing Problem module (MIP, DP, Factory)
 ├── cg_behavior.py             # CG with performance model
 ├── cg_naive.py                # Baseline CG
 ├── loop_cg.py                 # Main execution script
