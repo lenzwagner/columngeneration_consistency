@@ -1,4 +1,4 @@
-from Utils.demand import *
+from results.behavioral_study.Utils.demand import *
 
 plt.rcParams.update({
     "text.usetex": True,

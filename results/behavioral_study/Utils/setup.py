@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from Utils.gcutil import create_individual_working_list
+from results.behavioral_study.Utils.gcutil import create_individual_working_list
 
 # --- Hardcoded Data (formerly from Arzt.xlsx and NF.xlsx) ---
 ARZT_RECORDS = [

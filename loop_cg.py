@@ -1,10 +1,10 @@
-from Utils.setup import Min_WD_i, Max_WD_i
+from results.behavioral_study.Utils.setup import Min_WD_i, Max_WD_i
 from cg_behavior import *
 from cg_naive import column_generation_naive
-from Utils.Plots.plots import *
-from Utils.aggundercover import *
+from results.behavioral_study.Utils.Plots.plots import *
+from results.behavioral_study.Utils.aggundercover import *
 from datetime import *
-from Utils.demand import *
+from results.behavioral_study.Utils.demand import *
 import time
 
 # DataFrame

@@ -421,13 +421,13 @@ def plotPerformanceList(dict_a, dict_b):
     result_list = []
 
     for key, value in dict_b.items():
-        if value == 1.0:
+        if value >= 0.5:
             if f"Physician_1" in dict_a:
                 d = dict_a[f"Physician_1"][key - 1]
                 # Ensure chronological order by sorting keys (days)
                 sorted_day_keys = sorted(d.keys())
                 day_values = [d[k] for k in sorted_day_keys]
-                for _ in range(int(value)):
+                for _ in range(int(round(value))):
                     result_list.extend(day_values)
 
     return result_list

@@ -28,7 +28,9 @@ class MasterProblem:
         self.max_itr = max_iteration
         self.cons_lmbda = None
         self.output_len = nr
-        self.demand_values = [self.demand[key] for key in self.demand.keys()]
+        
+        # Ensure deterministic order matching sorted(d.keys()) in plotPerformanceList
+        self.demand_values = [self.demand[t, s] for t in self.days for s in self.shifts]
         self.start = start
         
         # Track all added schedules (column index -> schedule dict)
@@ -276,6 +278,16 @@ class MasterProblem:
         self.doctors_cumulative_multiplied = []
         self.vals = self.demand_values
         self.comp_result = []
+        
+        # Safety check to prevent IndexError
+        if len(self.vals) != len(self.sum_xWerte):
+            print(f"WARNING: Dimension mismatch in calc_naive! Demand: {len(self.vals)}, Assignments: {len(self.sum_xWerte)}")
+            # Adjust if possible or pad with zeros to avoid crash
+            if len(self.vals) > len(self.sum_xWerte):
+                self.sum_xWerte.extend([0] * (len(self.vals) - len(self.sum_xWerte)))
+            else:
+                self.vals = self.vals + [0] * (len(self.sum_xWerte) - len(self.vals))
+
         for i in range(len(self.vals)):
             if self.vals[i] < self.sum_xWerte[i]:
                 self.comp_result.append(0)

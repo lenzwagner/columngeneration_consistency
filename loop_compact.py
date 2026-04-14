@@ -1,9 +1,7 @@
-from Utils.setup import Min_WD_i, Max_WD_i
-from Utils.compactsolver import Problem
-from datetime import datetime
-from Utils.gcutil import *
+from results.behavioral_study.Utils.setup import Min_WD_i, Max_WD_i
+from results.behavioral_study.Utils.compactsolver import Problem
+from results.behavioral_study.Utils.gcutil import *
 import pandas as pd
-import numpy as np
 import time
 
 # DataFrame for results

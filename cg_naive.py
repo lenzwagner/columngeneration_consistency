@@ -1,8 +1,7 @@
 from masterproblem import *
-from subproblem import *
 from subproblem_factory import create_subproblem
-from Utils.gcutil import *
-from Utils.compactsolver import *
+from results.behavioral_study.Utils.gcutil import *
+from results.behavioral_study.Utils.compactsolver import *
 
 def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi, threshold, time_cg, I, T, K, epsi, scale, sp_solver='mip'):
     # **** Column Generation ****
