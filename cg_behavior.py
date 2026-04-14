@@ -3,7 +3,7 @@ import time
 
 from masterproblem import *
 from subproblem import *
-from subproblem import create_subproblem
+from subproblem_factory import create_subproblem
 from Utils.gcutil import *
 from Utils.compactsolver import *
 
