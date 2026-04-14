@@ -3,6 +3,9 @@ import os
 import ast
 import numpy as np
 
+# --- Globals ---
+DEMAND_CACHE = {}
+
 # --- Constants ---
 T = 28  # planning-horizon length in days
 
@@ -19,31 +22,80 @@ def fmt_err(means, stds):
 
 def moving_avg(arr, w=3):
     """Simple moving-average trend (window=3, reflect at edges)."""
+    if len(arr) < w: return arr
     result = np.convolve(arr, np.ones(w) / w, mode='same')
     result[0] = arr[:2].mean()
     result[-1] = arr[-2:].mean()
     return result
 
-def generate_undercoverage_plot(df):
+def load_demand_data(demand_file, pattern, scenario):
+    """Load demand data for a specific pattern and scenario."""
+    cache_key = (pattern, scenario)
+    if cache_key in DEMAND_CACHE:
+        return DEMAND_CACHE[cache_key]
+    
+    try:
+        data = pd.read_excel(demand_file)
+        # Filter rows based on Pattern and Scenario. Note: Case sensitivity may vary.
+        # loop_cg uses 'Pattern' and 'Scenario' (capitalized) in the demand excel
+        filtered = data[(data['Pattern'] == pattern) & (data['Scenario'] == scenario)]
+        
+        if filtered.empty:
+            # Try lowercase if capitalized fails
+            filtered = data[(data['pattern'] == pattern) & (data['scenario'] == scenario)]
+            
+        if not filtered.empty:
+            # Extract (day, shift) -> demand from columns like '1,1', '1,2', etc.
+            demand_dict = {
+                tuple(map(int, col.split(','))): filtered[col].values[0]
+                for col in data.columns if ',' in col
+            }
+            DEMAND_CACHE[cache_key] = demand_dict
+            return demand_dict
+    except Exception as e:
+        print(f"Error loading demand data: {e}")
+        
+    return {}
+
+def generate_undercoverage_plot(df, suffix='abs'):
     days = list(range(1, T + 1))
     shifts = [1, 2, 3]
 
-    def aggregate_daily(col_name):
+    def aggregate_daily(col_name, relative=False):
         seed_rows = []
-        for raw in df[col_name].dropna():
+        demand_file = os.path.join(os.path.dirname(__file__), '../../../../data/demand_data.xlsx')
+        
+        for idx, row in df.iterrows():
+            raw = row[col_name]
+            if pd.isna(raw): continue
+            
             try:
                 d = ast.literal_eval(raw) if isinstance(raw, str) else raw
                 row_vals = [sum(d.get((day, s), 0.0) for s in shifts) for day in days]
+                
+                if relative:
+                    pattern = row.get('pattern', row.get('Pattern'))
+                    scenario = row.get('scenario', row.get('Scenario'))
+                    demand_dict = load_demand_data(demand_file, pattern, scenario)
+                    
+                    if demand_dict:
+                        daily_demand = [sum(demand_dict.get((day, s), 0.0) for s in shifts) for day in days]
+                        row_vals = [v / d_val if d_val > 0 else 0 for v, d_val in zip(row_vals, daily_demand)]
+                    else:
+                        continue # Skip if demand missing for relative plot
+                
                 seed_rows.append(row_vals)
-            except Exception:
+            except Exception as e:
+                # print(f"Error in aggregation: {e}")
                 continue
         return np.array(seed_rows)
 
-    arr_bap = aggregate_daily('shift_undercover_behavior')
-    arr_npp = aggregate_daily('shift_undercover_naive')
+    is_rel = (suffix == 'rel')
+    arr_bap = aggregate_daily('shift_undercover_behavior', relative=is_rel)
+    arr_npp = aggregate_daily('shift_undercover_naive', relative=is_rel)
 
     if arr_bap.size == 0 or arr_npp.size == 0:
-        print("Warning: Could not aggregate shift_undercover data.")
+        print(f"Warning: Could not aggregate data for {suffix} plot.")
         return
 
     mean_bap = arr_bap.mean(axis=0)
@@ -56,16 +108,27 @@ def generate_undercoverage_plot(df):
 
     bap_coords = fmt_err(mean_bap, std_bap)
     npp_coords = fmt_err(mean_npp, std_npp)
-    trend_bap_coords = fmt_coords(trend_bap, precision=2)
-    trend_npp_coords = fmt_coords(trend_npp, precision=2)
+    trend_bap_coords = fmt_coords(trend_bap, precision=2 if not is_rel else 4)
+    trend_npp_coords = fmt_coords(trend_npp, precision=2 if not is_rel else 4)
 
-    raw_ymax = max((mean_bap + std_bap).max(), (mean_npp + std_npp).max()) - 5
-    ymax = int(np.ceil(raw_ymax / 25.0) * 25) + 5
-
-    ytick_vals = [0, 25, 50, 75]
-    while ytick_vals[-1] + 25 <= ymax:
-        ytick_vals.append(ytick_vals[-1] + 25)
-    ytick_str = ",".join(str(v) for v in ytick_vals)
+    if is_rel:
+        raw_ymax = (max((mean_bap + std_bap).max(), (mean_npp + std_npp).max())) * 1.15
+        ymax = round(raw_ymax, 2)
+        ytick_vals = [0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30]
+        ytick_vals = [v for v in ytick_vals if v <= ymax + 0.05]
+        ytick_str = ",".join(str(v) for v in ytick_vals)
+        ylabel = "Relative Undercoverage (\\%)"
+        # For relative axis, we use percent format
+        extra_axis_params = "yticklabel={\\pgfmathparse{\\tick*100}\\pgfmathprintnumber{\\pgfmathresult}\\%},"
+    else:
+        raw_ymax = max((mean_bap + std_bap).max(), (mean_npp + std_npp).max()) - 5
+        ymax = int(np.ceil(raw_ymax / 25.0) * 25) + 5
+        ytick_vals = [0, 25, 50, 75]
+        while ytick_vals[-1] + 25 <= ymax:
+            ytick_vals.append(ytick_vals[-1] + 25)
+        ytick_str = ",".join(str(v) for v in ytick_vals)
+        ylabel = "Absolute Undercoverage"
+        extra_axis_params = ""
 
     tikz_code = r"""\begin{figure}
 \begin{tikzpicture}
@@ -73,7 +136,7 @@ def generate_undercoverage_plot(df):
 		width=\textwidth,
 		height=0.35\textwidth,
 		xlabel={\footnotesize Day},
-		ylabel={\footnotesize Absolute Undercoverage},
+		ylabel={\footnotesize """ + ylabel + r"""},
 		ymin=0,
 		ymax=""" + str(ymax) + r""",
 		xmin=0.5,
@@ -86,14 +149,6 @@ def generate_undercoverage_plot(df):
 		tick label style={font=\scriptsize},
 		xtick pos=bottom,
 		ytick pos=left,
-		legend style={
-			at={(0.02,0.98)},
-			anchor=north west,
-			legend columns=-1,
-			draw=none,
-			fill=white,
-			font=\footnotesize
-		},
 	]
 
 	\definecolor{peachy}{HTML}{febb98}
@@ -159,18 +214,30 @@ def generate_undercoverage_plot(df):
 		smooth
 	] coordinates {""" + " " + trend_npp_coords + r"""};
 
-	\legend{\footnotesize \acl{bap}, \footnotesize \acl{npp}}
+	\node[
+			anchor=north west,
+			font=\footnotesize,
+			fill=white,
+			draw=black,
+			inner sep=1.5mm,
+			rounded corners
+		] at (rel axis cs:0.02,0.98) {%
+			\begin{tabular}{@{}c@{\hspace{1mm}}l@{\hspace{3mm}}c@{\hspace{1mm}}l@{}}
+				\legendpx{1} & \acl{bap} &
+				\legendpx{2} & \acl{npp}
+			\end{tabular}%
+		};
 \end{axis}
 \end{tikzpicture}
 \vspace{-0.3cm}
-\caption{Daily absolute undercoverage for the base setting across $\mathcal{S}_5$. Error bars: standard deviation. Green/red shading: \ac{bap} advantage/investment phase.}
-\label{fig:relunder}
+\caption{Daily """ + ("relative" if is_rel else "absolute") + r""" undercoverage for the base setting across $\mathcal{S}_5$. Error bars: standard deviation. Green/red shading: \ac{bap} advantage/investment phase.}
+\label{fig:""" + ("rel" if is_rel else "rel") + r"""under}
 \end{figure}
 """
-    output_path = os.path.join(os.path.dirname(__file__), 'undercoverage_plot.tex')
+    output_path = os.path.join(os.path.dirname(__file__), f'undercoverage_{suffix}_plot.tex')
     with open(output_path, 'w') as f:
         f.write(tikz_code)
-    print(f"Undercoverage TikZ plot written to {output_path}")
+    print(f"Undercoverage TikZ plot ({suffix}) written to {output_path}")
 
 def main():
     possible_paths = [
@@ -190,7 +257,8 @@ def main():
         return
             
     df = pd.read_excel(file_path)
-    generate_undercoverage_plot(df)
+    generate_undercoverage_plot(df, suffix='abs')
+    generate_undercoverage_plot(df, suffix='rel')
 
 if __name__ == "__main__":
     main()

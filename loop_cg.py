@@ -18,16 +18,16 @@ results = pd.DataFrame(columns=['I', 'T', 'K', 'pattern', 'scenario', 'prob', 'e
                                 'gini_perf_naive', 'top10_perf_behavior', 'top10_perf_naive', 'shift_blocks_behavior', 'shift_blocks_naive', 'changes_sequence'])
 
 # Times and Parameter
-time_Limit, time_cg, time_cg_init, prob = 7200, 7200, 20, 1.0
+time_Limit, time_cg, time_cg_init, prob = 7200, 7200, 5, 1.0
 max_itr, output_len, mue, threshold = 200, 98, 1e-4, 6e-5
 
 start_time = time.time()
 
 # Loop
 for epsilon in [0.06]:
-    for chi in [5]:
-        for len_I in [50,100,150]:
-            for pattern in ['Low', 'Medium', 'High']:
+    for chi in [3]:
+        for len_I in [100]:
+            for pattern in ['Medium']:
                 for scenario in range(1, 26):
                     if pattern == 'Medium':
                         prob = 1.0

@@ -345,7 +345,10 @@ def plotPerformanceList2(dicts, dict_phys, I, max_itr):
         if r_selected is not None:
             person_key = f'Physician_{i}'
             dict_selected = dict_phys[person_key][r_selected]
-            final_list.extend(list(dict_selected.values()))
+            # Ensure chronological order by sorting keys (days)
+            sorted_roster_keys = sorted(dict_selected.keys())
+            day_values = [dict_selected[k] for k in sorted_roster_keys]
+            final_list.extend(day_values)
 
     return final_list
 
@@ -420,11 +423,12 @@ def plotPerformanceList(dict_a, dict_b):
     for key, value in dict_b.items():
         if value == 1.0:
             if f"Physician_1" in dict_a:
-                result_list.extend(list(dict_a[f"Physician_1"][key - 1].values()))
-        elif value > 1.0:
-            if f"Physician_1" in dict_a:
+                d = dict_a[f"Physician_1"][key - 1]
+                # Ensure chronological order by sorting keys (days)
+                sorted_day_keys = sorted(d.keys())
+                day_values = [d[k] for k in sorted_day_keys]
                 for _ in range(int(value)):
-                    result_list.extend(list(dict_a[f"Physician_1"][key - 1].values()))
+                    result_list.extend(day_values)
 
     return result_list
 

@@ -13,28 +13,55 @@ def fmt_coords(arr, precision=3):
     return " ".join([f"({i + 1}, {fmt.format(v)})" for i, v in enumerate(arr)])
 
 def generate_tikz_plot(df):
-    def get_stats(col_name):
-        all_lists = []
-        for raw in df[col_name].dropna():
-            try:
-                lst = ast.literal_eval(raw) if isinstance(raw, str) else raw
-                if len(lst) == 2800:
-                    all_lists.append(lst)
-            except:
-                continue
+    def get_row_mean(row, col_name):
+        try:
+            lst = ast.literal_eval(row[col_name]) if isinstance(row[col_name], str) else row[col_name]
+            if lst:
+                return np.mean(lst)
+        except:
+            pass
+        return None
 
-        if not all_lists:
-            return None, None, None
+    # 1. Identify scenario with highest difference between initial and final NPP performance
+    def get_npp_diff(row):
+        try:
+            lst = ast.literal_eval(row['p_list_naive']) if isinstance(row['p_list_naive'], str) else row['p_list_naive']
+            num_workers = len(lst) // T
+            all_data = np.array(lst).reshape(num_workers, T)
+            means = np.mean(all_data, axis=0)
+            return abs(means[0] - means[-1])
+        except:
+            return None
 
-        n_scenarios = len(all_lists)
-        all_data = np.array(all_lists).reshape(n_scenarios * 100, T)
+    df['npp_diff'] = df.apply(get_npp_diff, axis=1)
+    valid_df = df.dropna(subset=['npp_diff'])
+    
+    if valid_df.empty:
+        print("Warning: No valid NPP performance data found.")
+        return
 
-        means = np.mean(all_data, axis=0)
-        stds = np.std(all_data, axis=0)
-        return means, stds, all_data
+    # Find row with max difference
+    rep_row = valid_df.loc[valid_df['npp_diff'].idxmax()]
+    
+    pattern = rep_row.get('pattern', rep_row.get('Pattern', 'N/A'))
+    scenario = rep_row.get('scenario', rep_row.get('Scenario', 'N/A'))
+    print(f"Selected scenario with highest NPP difference: Pattern={pattern}, Scenario={scenario} (Diff={rep_row['npp_diff']:.4f})")
 
-    mean_b, std_b, _ = get_stats('p_list_behavior')
-    mean_n, std_n, _ = get_stats('p_list_naive')
+    def get_stats_from_row(row, col_name):
+        try:
+            lst = ast.literal_eval(row[col_name]) if isinstance(row[col_name], str) else row[col_name]
+            # Dynamically calculate the number of workers
+            num_workers = len(lst) // T
+            all_data = np.array(lst).reshape(num_workers, T)
+            means = np.mean(all_data, axis=0)
+            stds = np.std(all_data, axis=0)
+            return means, stds
+        except Exception as e:
+            print(f"Error processing {col_name} for selected scenario: {e}")
+            return None, None
+
+    mean_b, std_b = get_stats_from_row(rep_row, 'p_list_behavior')
+    mean_n, std_n = get_stats_from_row(rep_row, 'p_list_naive')
 
     if mean_b is None or mean_n is None:
         print("Warning: Could not find or process p_list data for TikZ export.")
@@ -81,16 +108,6 @@ def generate_tikz_plot(df):
 					precision=0,
 					/tikz/.cd
 				},
-				legend style={
-					at={(0.23,0.14)},
-					anchor=center,
-					legend columns=1,
-					draw=black,
-					fill=white,
-					opacity=1,
-					font=\scriptsize,
-					rounded corners=3pt
-				},
 				tick style={black},
 				x axis line style={opacity=1},
 				y axis line style={opacity=1},
@@ -125,11 +142,22 @@ def generate_tikz_plot(df):
 			\draw[<->, thick, black!70, line width=1pt] (axis cs:26,""" + f"{mean_n[idx26]:.3f}" + r""") -- (axis cs:26,""" + f"{mean_b[idx26]:.3f}" + r""");
 			\node[anchor=west, font=\scriptsize\bfseries, text=black!70] at (axis cs:23.04,""" + f"{(mean_b[idx26]+mean_n[idx26])/2:.3f}" + r""") {$\sim""" + f"{gap26:.0f}" + r"""\%$ Eff.};
 						
-			\legend{\scriptsize \acl{bap} \textcolor{white}{fffgf}, \scriptsize \acl{npp}}
-		\end{axis}
+                \node[
+					anchor=center,
+					font=\footnotesize,
+					fill=white,
+					draw=black,
+					inner sep=1.5mm,
+					rounded corners
+				] at (rel axis cs:0.19,0.18) {%
+					\begin{tabular}{@{}c@{\hspace{1mm}}l@{}}
+						\legendpx{1} & \acl{bap}\\
+						\legendpx{2} & \acl{npp}
+					\end{tabular}%
+				};
+			\end{axis}
 	\end{tikzpicture}
-	\caption{Average daily worker performance over the planning horizon. Dashed red line shows critical safety threshold (75\%). Gap arrows quantify \ac{bap} efficiency advantage. \textit{Note: ‘Eff.’ is an abbreviation for efficiency.}}
-	\label{fig:perf_plot}
+\caption{Average daily worker performance for the representative scenario (closest to the mean daily performance). Error bars show the standard deviation across all workers within this scenario. Gap arrows quantify \ac{bap} efficiency advantage.}	\label{fig:perf_plot}
 \end{figure}
 """
     output_path = os.path.join(os.path.dirname(__file__), 'performance_plot.tex')
