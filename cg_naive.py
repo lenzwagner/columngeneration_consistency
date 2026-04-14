@@ -188,26 +188,14 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
 
 
 
-    undercoverage_, understaffing_, perfloss_, consistency_, consistency_norm_, undercoverage_norm_, understaffing_norm_, perfloss_norm_, ls_perf, cumulative_total_ = master.calc_naive(ls_perf_, ls_sc, ls_rec, epsi, scale)
+    (undercoverage_, understaffing_, perfloss_, consistency_, consistency_norm_, undercoverage_norm_, understaffing_norm_, 
+     perfloss_norm_, ls_p_actual, ls_perf_actual, cumulative_total_) = master.calc_naive(ls_perf_, ls_sc, ls_rec, epsi, scale)
 
     undercoverage_naive = master.getUndercoverage()
-    #print(ls_p, ls_sc, ls_perf, ls_x, ls_rec, sep="\n")
-    # Print each value with description
-    #print("Undercoverage:", undercoverage_)
-    #print("Understaffing:", understaffing_)
-    #print("Performance loss:", perfloss_)
-    #print("Consistency:", consistency_)
-    #print("Normalized consistency:", consistency_norm_)
-    #print("Normalized undercoverage:", undercoverage_norm_)
-    #print("Normalized understaffing:", understaffing_norm_)
-    #print("Normalized performance loss:", perfloss_norm_)
-    #print("Performance local search:", ls_perf)
-    #print("Cumulative total:", cumulative_total_)
     cumulative_with_naive = [cumulative_total_[j] + undercoverage_naive[j] for j in range(len(cumulative_total_))]
-    #print("Cumulative total + naive undercoverage:", cumulative_with_naive)
 
     # Inequality
-    L_perf = [x * (1 - p) for x, p in zip(ls_x, ls_perf)]
+    L_perf = [x * (1 - p) for x, p in zip(ls_x, ls_perf_actual)]
     results_ineq_sc, spread_sc, load_share_sc, gini_sc, top10_sc = evaluate_inequality(ls_sc, len(master.days),
                                                                              len(master.nurses))
     results_ineq_perf, spread_perf, load_share_perf, gini_perf, top10_perf = evaluate_inequality(
@@ -227,9 +215,9 @@ def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_
         understaffing_norm_,
         perfloss_norm_,
         master.model.objval,
-        ls_p,
+        ls_p_actual,
         ls_sc,
-        ls_perf,
+        ls_perf_actual,
         ls_x,
         ls_rec,
         cumulative_with_naive,
