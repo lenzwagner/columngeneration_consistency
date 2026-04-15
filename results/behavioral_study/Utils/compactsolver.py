@@ -17,7 +17,7 @@ class Problem:
         self.mue = 0.1
         self.zeta = 0.1
         self.chi = chi
-        self.omega = math.floor(1 / 1e-6)
+        self.omega = math.floor(1 / (self.epsilon + 1e-6))
         self.M = len(self.T) + self.omega
         self.xi = 1 - self.epsilon * self.omega
         self.Days_Off = 2
