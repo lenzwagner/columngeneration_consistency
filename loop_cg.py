@@ -20,8 +20,8 @@ results = pd.DataFrame(columns=['I', 'T', 'K', 'pattern', 'scenario', 'prob', 'e
                                 'gini_perf_naive', 'shift_blocks_behavior', 'shift_blocks_naive'])
 
 # Times and Parameter
-time_Limit, time_cg, time_cg_init, prob = 7200, 7200, 10, 1.0
-max_itr, output_len, mue, threshold = 2000, 98, 1e-4, 6e-5
+time_cg, time_cg_init = 7200, 5
+max_itr, threshold = 200, 6e-5
 
 start_time = time.time()
 
@@ -44,16 +44,11 @@ group_params = [
 
 # Loop
 for epsilon in [0.06]:
-    for chi in [5]:
+    for chi in [3]:
         for len_I in [100]:
             for pattern in ['Medium']:
-                for scenario in range(1, 26):
-                    if pattern == 'Medium':
-                        prob = 1.0
-                    elif pattern == 'High':
-                        prob = 1.1
-                    elif pattern == 'Low':
-                        prob = 0.9
+                for scenario in range(1, 11):
+                    prob = {'Medium': 1.0, 'High': 1.1, 'Low': 0.9}.get(pattern)
 
                     # Data
                     T = list(range(1, 29))
@@ -66,18 +61,15 @@ for epsilon in [0.06]:
                         'K': K + [np.nan] * (max(len(I), len(T), len(K)) - len(K))
                     })
 
-                    random.seed = 2
                     demand_dict = generate_dict_from_excel('data/demand_data.xlsx', len(I), pattern, scenario=scenario)
-
-                    eps = epsilon
 
                     # Create worker groups based on configuration
                     if use_heterogeneous:
                         worker_groups = create_groups_from_fractions(I, group_fractions, group_params)
                         print(f"Using heterogeneous groups: {[(g.name, len(g.worker_ids), g.epsilon, g.chi) for g in worker_groups.values()]}")
                     else:
-                        worker_groups = create_homogeneous_group(I, eps, chi)
-                        print(f"Using homogeneous group: eps={eps}, chi={chi}")
+                        worker_groups = create_homogeneous_group(I, epsilon, chi)
+                        print(f"Using homogeneous group: epsilon={epsilon}, chi={chi}")
 
                     print(f"")
                     print(f"Iteration: Eps: {epsilon} - Chi: {chi} - I: {len(I)} - Pattern: {pattern} - K: {scenario}")
@@ -94,7 +86,7 @@ for epsilon in [0.06]:
                      load_share_sc_behavior, gini_sc_behavior, results_ineq_perf_behavior,
                      spread_perf_behavior, load_share_perf_behavior, gini_perf_behavior, 
                      shift_blocks_behavior) = column_generation_behavior(
-                        data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi,
+                        data, demand_dict, epsilon, Min_WD_i, Max_WD_i, time_cg_init, max_itr, 100, chi,
                         threshold, time_cg, I, T, K, prob, sp_solver='labeling_bidir',
                         worker_groups=worker_groups, save_lp=True, use_heuristic_start=False
                     )
@@ -109,8 +101,8 @@ for epsilon in [0.06]:
                     perfloss_norm_naive, final_obj_naive, ls_p_naive, ls_sc_naive, ls_perf_naive, ls_x_naive,
                     ls_r_naive, undercoverage_per_shift_naive, results_ineq_sc_naive, spread_sc_naive,
                     load_share_sc_naive, gini_sc_naive, results_ineq_perf_naive,
-                    spread_perf_naive, load_share_perf_naive, gini_perf_naive, shift_blocks_naive) = column_generation_naive(data, demand_dict, 0, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi,
-                                                threshold, time_cg, I, T, K, eps, prob, sp_solver='labeling_bidir')
+                    spread_perf_naive, load_share_perf_naive, gini_perf_naive, shift_blocks_naive) = column_generation_naive(data, demand_dict, 0, Min_WD_i, Max_WD_i, time_cg_init, max_itr, 100, chi,
+                                                threshold, time_cg, I, T, K, epsilon, prob, sp_solver='labeling_bidir')
 
 
                     shift_undercover_behavior = create_dict_from_list(undercoverage_per_shift_behavior, len(T), len(K))
@@ -129,7 +121,7 @@ for epsilon in [0.06]:
                         'pattern': pattern,
                         'scenario': scenario,
                         'prob': prob,
-                        'epsilon': eps,
+                        'epsilon': epsilon,
                         'chi': chi,
                         'gap': round(gap, 3),
                         'lagrange': round(lagrangeB, 3),

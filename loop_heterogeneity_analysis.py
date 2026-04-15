@@ -96,9 +96,9 @@ SCENARIOS = {
 # PARAMETERS
 # ============================================================================
 
-time_Limit, time_cg, time_cg_init = 7200, 7200, 10
-max_itr, output_len, threshold = 2000, 98, 6e-5
-N_SEEDS = 25
+time_cg, time_cg_init = 7200, 5
+max_itr, threshold = 2000, 6e-5
+N_SEEDS = 10
 
 # Which analysis to run
 RUN_ANALYSIS = 'all'  # 'baseline', 'sensitivity', or 'all'
@@ -249,9 +249,9 @@ def run_single_scenario(scenario_key, scenario_config, seeds=range(1, 26), run_n
              ineq_perf_bsv, spread_perf_bsv, load_perf_bsv, 
              gini_perf_bsv, blocks_bsv) = column_generation_behavior(
                 data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, 
-                output_len, chi, threshold, time_cg, I, T, K, 1.0, 
+                100, chi, threshold, time_cg, I, T, K, 1.0, 
                 sp_solver='labeling_bidir', worker_groups=worker_groups, 
-                save_lp=False, use_heuristic_start=True
+                save_lp=False, use_heuristic_start=False
             )
             time_bsv = time.time() - t0
             
@@ -314,7 +314,7 @@ def run_single_scenario(scenario_key, scenario_config, seeds=range(1, 26), run_n
                  ineq_perf_mlsv, spread_perf_mlsv, load_perf_mlsv, 
                  gini_perf_mlsv, blocks_mlsv) = column_generation_naive(
                     data, demand_dict, 0, Min_WD_i, Max_WD_i, time_cg_init, max_itr, 
-                    output_len, chi, threshold, time_cg, I, T, K, eps, 1.0, 
+                    100, chi, threshold, time_cg, I, T, K, eps, 1.0, 
                     sp_solver='labeling_bidir'
                 )
                 
