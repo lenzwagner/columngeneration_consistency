@@ -28,7 +28,7 @@ for epsilon in [0.06]:
     for chi in [3]:
         for len_I in [100]:
             for pattern in ['Medium']:
-                for scenario in range(1, 11):
+                for scenario in range(1, 6):
                     if pattern == 'Medium':
                         prob = 1.0
                     elif pattern == 'High':
