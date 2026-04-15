@@ -198,13 +198,6 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
     master.setStartSolution()
     master.updateModel()
     
-    # Save initial LP for debugging
-    if save_lp:
-        import os
-        os.makedirs("debug_models", exist_ok=True)
-        master.model.write("debug_models/mp_initial.lp")
-        print(f"Saved initial LP to debug_models/mp_initial.lp")
-    
     master.solveRelaxModel()
 
     # Retrieve dual values
@@ -314,12 +307,6 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
         # Increase latest used iteration
         last_itr = itr + 1
         master.updateModel()
-            
-        # Save LP if debugging enabled
-        if save_lp:
-            import os
-            os.makedirs("debug_models", exist_ok=True)
-            master.model.write(f"debug_models/mp_{sp_solver}_iter{itr}.lp")
 
         # Update Model
         master.updateModel()

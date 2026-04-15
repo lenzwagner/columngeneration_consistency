@@ -7,6 +7,8 @@ from datetime import *
 from Utils.demand import *
 from worker_groups import create_groups_from_fractions, create_homogeneous_group
 import time
+import os
+os.makedirs("results", exist_ok=True)
 
 # DataFrame
 results = pd.DataFrame(columns=['I', 'T', 'K', 'pattern', 'scenario', 'prob', 'epsilon', 'chi', 'gap', 'lagrange', 'objval', 'lbound', 'iteration', 'time_sp', 'time_rmp',
@@ -47,7 +49,7 @@ for epsilon in [0.06]:
     for chi in [3]:
         for len_I in [100]:
             for pattern in ['Medium']:
-                for scenario in range(1, 11):
+                for scenario in range(1, 6):
                     prob = {'Medium': 1.0, 'High': 1.1, 'Low': 0.9}.get(pattern)
 
                     # Data

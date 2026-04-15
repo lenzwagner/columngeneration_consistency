@@ -98,7 +98,7 @@ SCENARIOS = {
 
 time_cg, time_cg_init = 7200, 5
 max_itr, threshold = 2000, 6e-5
-N_SEEDS = 10
+N_SEEDS = 3
 
 # Which analysis to run
 RUN_ANALYSIS = 'all'  # 'baseline', 'sensitivity', or 'all'
