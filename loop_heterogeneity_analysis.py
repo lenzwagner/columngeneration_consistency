@@ -96,9 +96,9 @@ SCENARIOS = {
 # PARAMETERS
 # ============================================================================
 
-time_cg, time_cg_init = 7200, 5
+time_cg, time_cg_init = 7200, 10
 max_itr, threshold = 2000, 6e-5
-N_SEEDS = 3
+N_SEEDS = 25
 
 # Which analysis to run
 RUN_ANALYSIS = 'all'  # 'baseline', 'sensitivity', or 'all'
@@ -269,7 +269,15 @@ def run_single_scenario(scenario_key, scenario_config, seeds=range(1, 26), run_n
                 'undercoverage': undercoverage_bsv,
                 'understaffing': understaffing_bsv,
                 'perf_loss_total': perfloss_bsv,
+                'perf_norm': perfloss_norm_bsv,
                 'shift_changes_total': consistency_bsv,
+                'cons_norm': consistency_norm_bsv,
+                'undercover_norm': undercoverage_norm_bsv,
+                'understaffing_norm': understaffing_norm_bsv,
+                'spread_sc': spread_sc_bsv,
+                'load_share_sc': load_sc_bsv,
+                'gini_sc': gini_sc_bsv,
+                'top10_sc': ineq_sc_bsv,
                 'objective': obj_bsv,
                 'lb': lb_bsv,
                 'gap': gap_bsv,
@@ -330,8 +338,16 @@ def run_single_scenario(scenario_key, scenario_config, seeds=range(1, 26), run_n
                     'model': 'MLSV',
                     'undercoverage': undercoverage_mlsv,
                     'understaffing': understaffing_mlsv,
+                    'understaffing_norm': understaffing_norm_mlsv,
                     'perf_loss_total': perfloss_mlsv,
+                    'perf_norm': perfloss_norm_mlsv,
                     'shift_changes_total': consistency_mlsv,
+                    'cons_norm': consistency_norm_mlsv,
+                    'undercover_norm': undercoverage_norm_mlsv,
+                    'spread_sc': spread_sc_mlsv,
+                    'load_share_sc': load_sc_mlsv,
+                    'gini_sc': gini_sc_mlsv,
+                    'top10_sc': ineq_sc_mlsv,
                     'objective': obj_mlsv,
                     'lb': 0,
                     'gap': 0,
@@ -556,6 +572,86 @@ def save_summary_csv(all_results):
     print(f"\nSummary CSV for paper text saved to: {filename}")
 
 
+def save_detailed_stats_csv(all_results):
+    """Save detailed min/max/median/mean/std stats for the scenarios, matching the requested CSV format."""
+    for scenario_key, results in all_results.items():
+        if not results: continue
+        bsv_results = [r for r in results if r['model'] == 'BSV']
+        mlsv_results = [r for r in results if r['model'] == 'MLSV']
+        
+        # We only generate this table if we ran BOTH models
+        if not bsv_results or not mlsv_results: continue
+        
+        metrics_mapping = [
+            ('undercover', 'undercoverage'),
+            ('undercover_norm', 'undercover_norm'),
+            ('cons', 'shift_changes_total'),
+            ('cons_norm', 'cons_norm'),
+            ('perf', 'perf_loss_total'),
+            ('perf_norm', 'perf_norm'),
+            ('understaffing', 'understaffing'),
+            ('understaffing_norm', 'understaffing_norm'),
+            ('spread_sc', 'spread_sc'),
+            ('load_share_sc', 'load_share_sc'),
+            ('gini_sc', 'gini_sc'),
+            ('top10_sc', 'top10_sc')
+        ]
+        
+        csv_rows = []
+        for metric_name, dict_key in metrics_mapping:
+            # Behavioral values
+            vals_bsv = [r[dict_key] for r in bsv_results if dict_key in r and r[dict_key] is not None]
+            if vals_bsv:
+                csv_rows.append({
+                    'metric': f'{metric_name}_behavior',
+                    'min': round(np.min(vals_bsv), 2),
+                    'max': round(np.max(vals_bsv), 2),
+                    'median': round(np.median(vals_bsv), 2),
+                    'mean': round(np.mean(vals_bsv), 2),
+                    'std': round(np.std(vals_bsv), 2)
+                })
+            # Naive values
+            vals_mlsv = [r[dict_key] for r in mlsv_results if dict_key in r and r[dict_key] is not None]
+            if vals_mlsv:
+                csv_rows.append({
+                    'metric': f'{metric_name}_naive',
+                    'min': round(np.min(vals_mlsv), 2),
+                    'max': round(np.max(vals_mlsv), 2),
+                    'median': round(np.median(vals_mlsv), 2),
+                    'mean': round(np.mean(vals_mlsv), 2),
+                    'std': round(np.std(vals_mlsv), 2)
+                })
+                
+        # Calculate reduction % (Undercoverage)
+        vals_uc_bsv = [r['undercoverage'] for r in bsv_results if 'undercoverage' in r]
+        vals_uc_mlsv = [r['undercoverage'] for r in mlsv_results if 'undercoverage' in r]
+        if vals_uc_bsv and vals_uc_mlsv:
+            uc_bsv_mean = np.mean(vals_uc_bsv)
+            uc_mlsv_mean = np.mean(vals_uc_mlsv)
+            if uc_mlsv_mean > 0:
+                reduction = (uc_mlsv_mean - uc_bsv_mean) / uc_mlsv_mean * 100
+            else:
+                reduction = 0
+            
+            csv_rows.append({
+                'metric': 'reduction',
+                'min': round(reduction, 2),
+                'max': '',
+                'median': '',
+                'mean': '',
+                'std': ''
+            })
+            
+        df_stats = pd.DataFrame(csv_rows)
+        # Enforce column order to exactly match request
+        df_stats = df_stats[['metric', 'min', 'max', 'median', 'mean', 'std']]
+        
+        filename = f'results/detailed_stats_{scenario_key}_{datetime.now().strftime("%d_%m_%Y_%H-%M")}.csv'
+        df_stats.to_csv(filename, index=False)
+        print(f"\nDetailed stats CSV for '{scenario_key}' saved to: {filename}")
+
+
+
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
@@ -608,6 +704,9 @@ if __name__ == "__main__":
     
     # Save summary CSV for paper text comparison
     save_summary_csv(all_results)
+    
+    # Save the custom detailed stats CSV format
+    save_detailed_stats_csv(all_results)
     
     print(f"\nTotal execution time: {time.time() - start_time:.2f} seconds")
     print("="*80)
