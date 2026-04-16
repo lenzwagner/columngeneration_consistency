@@ -15,9 +15,9 @@ def main():
     # If the script is run directly in the behavioral_study folder, the Excel might be in the computational_study folder
     # Or in the root directory of the repo
     possible_paths = [
-        'results_analysis.xlsx',
-        'results/behavioral_study/results_analysis.xlsx',
-        '../computational_study/results_analysis.xlsx'
+        'results_cg.xlsx',
+        'results/behavioral_study/results_cg.xlsx',
+        '../computational_study/results_cg.xlsx'
     ]
     file_path = None
     for p in possible_paths:

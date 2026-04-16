@@ -168,9 +168,9 @@ def generate_tikz_plot(df):
 def main():
     # If Excel is not found in the current folder, check parent folders
     possible_paths = [
-        'results_analysis.xlsx',
-        '../../results_analysis.xlsx',
-        '../results_analysis.xlsx'
+        'results_cg.xlsx',
+        '../../results_cg.xlsx',
+        '../results_cg.xlsx'
     ]
     file_path = None
     for p in possible_paths:
@@ -180,7 +180,7 @@ def main():
             break
             
     if not file_path:
-        print(f"Error: results_analysis.xlsx not found.")
+        print(f"Error: results_cg.xlsx not found.")
         return
             
     df = pd.read_excel(file_path)

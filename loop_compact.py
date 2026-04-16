@@ -33,7 +33,7 @@ for epsilon in [0.06]:
 
                     data = build_data_frame(I, T, K)
 
-                    demand_dict = generate_dict_from_excel('data/demand_data.xlsx', len(I), pattern, scenario)
+                    demand_dict = generate_dict_from_excel('Utils/demand_data.xlsx', len(I), pattern, scenario)
                     eps = epsilon
                     print('demand_dict', demand_dict)
 

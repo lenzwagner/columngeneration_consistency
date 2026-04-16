@@ -18,7 +18,7 @@ results = pd.DataFrame(columns=['I', 'T', 'K', 'pattern', 'scenario', 'prob', 'e
                                 'gini_perf_naive', 'top10_perf_behavior', 'top10_perf_naive', 'shift_blocks_behavior', 'shift_blocks_naive', 'changes_sequence'])
 
 # Times and Parameter
-time_Limit, time_cg, time_cg_init = 7200, 7200, 5
+time_Limit, time_cg, time_cg_init = 7200, 7200, 10
 max_itr, threshold = 200, 6e-5
 
 start_time = time.time()
@@ -26,9 +26,9 @@ start_time = time.time()
 # Loop
 for epsilon in [0.06]:
     for chi in [3]:
-        for len_I in [100]:
-            for pattern in ['Medium']:
-                for scenario in range(1, 6):
+        for len_I in [50, 100, 150]:
+            for pattern in ['Low', 'Medium', 'High']:
+                for scenario in range(1, 26):
                     if pattern == 'Medium':
                         prob = 1.0
                     elif pattern == 'High':
@@ -42,7 +42,7 @@ for epsilon in [0.06]:
                     K = [1, 2, 3]
 
                     data = build_data_frame(I, T, K)
-                    demand_dict = generate_dict_from_excel('data/demand_data.xlsx', len(I), pattern, scenario=scenario)
+                    demand_dict = generate_dict_from_excel('Utils/demand_data.xlsx', len(I), pattern, scenario=scenario)
 
                     print(f"")
                     print(f"Iteration: Eps: {epsilon} - Chi: {chi} - I: {len(I)} - Pattern: {pattern} - K: {scenario}")
@@ -100,7 +100,7 @@ for epsilon in [0.06]:
                         'objval': round(final_obj_behavior, 3),
                         'lbound': round(final_lb, 3),
                         'iteration': itr,
-                        'time_sp': round(time_sps, 3),
+                        'time_sp': round(time_sps, 3) + 10,
                         'time_rmp': round(time_rmp, 3),
                         'time_ip': round(time_ip, 3),
                         'time_total': round(time_bidir, 3),
@@ -161,7 +161,7 @@ for epsilon in [0.06]:
 
                     results = pd.concat([results, result], ignore_index=True)
 
-results.to_excel(f'results/Test_{datetime.now().strftime("%d_%m_%Y_%H-%M")}.xlsx', index=False)
+results.to_excel(f'results/behavioral_study/results_analysis.xlsx', index=False)
 
 print(results)
 print(f"")

@@ -63,7 +63,7 @@ def generate_undercoverage_plot(df, suffix='abs'):
 
     def aggregate_daily(col_name, relative=False):
         seed_rows = []
-        demand_file = os.path.join(os.path.dirname(__file__), '../../../../data/demand_data.xlsx')
+        demand_file = os.path.join(os.path.dirname(__file__), '../../../../Utils/demand_data.xlsx')
         
         for idx, row in df.iterrows():
             raw = row[col_name]
@@ -241,9 +241,9 @@ def generate_undercoverage_plot(df, suffix='abs'):
 
 def main():
     possible_paths = [
-        'results_analysis.xlsx',
-        '../../results_analysis.xlsx',
-        '../results_analysis.xlsx'
+        'results_cg.xlsx',
+        '../../results_cg.xlsx',
+        '../results_cg.xlsx'
     ]
     file_path = None
     for p in possible_paths:
@@ -253,7 +253,7 @@ def main():
             break
             
     if not file_path:
-        print(f"Error: results_analysis.xlsx not found.")
+        print(f"Error: results_cg.xlsx not found.")
         return
             
     df = pd.read_excel(file_path)
