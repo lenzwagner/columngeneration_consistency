@@ -73,6 +73,9 @@ $m$ & Compact Model & & & Column Generation & & & & & & \\
         def fmt(mean, std):
             return f"{{{mean:.1f} \\\\ ({std:.1f})}}"
             
+        def fmt_time(mean, std):
+            return f"{{{mean:.2f} \\\\ ({std:.2f})}}"
+            
         def fmt_gap(mean, std):
             return f"{{{mean:.2f} \\\\ ({std:.2f})}}"
 
@@ -80,11 +83,11 @@ $m$ & Compact Model & & & Column Generation & & & & & & \\
         comp_lb_ub_str = f"{{{comp_lb_m:.1f} / {comp_ub_m:.1f} \\\\ ({comp_lb_s:.1f}) / ({comp_ub_s:.1f})}}"
         
         cg_gap_str = fmt_gap(cg_gap_m, cg_gap_s)
-        cg_time_str = fmt(cg_time_m, cg_time_s)
+        cg_time_str = fmt_time(cg_time_m, cg_time_s)
         
-        cg_time_rmp_str = fmt(cg_time_rmp_m, cg_time_rmp_s)
-        cg_time_sp_str = fmt(cg_time_sp_m, cg_time_sp_s)
-        cg_time_ip_str = fmt(cg_time_ip_m, cg_time_ip_s)
+        cg_time_rmp_str = fmt_time(cg_time_rmp_m, cg_time_rmp_s)
+        cg_time_sp_str = fmt_time(cg_time_sp_m, cg_time_sp_s)
+        cg_time_ip_str = fmt_time(cg_time_ip_m, cg_time_ip_s)
         
         cg_iter_str = fmt(cg_iter_m, cg_iter_s)
         cg_lb_ub_str = f"{{{cg_lb_m:.1f} / {cg_ub_m:.1f} \\\\ ({cg_lb_s:.1f}) / ({cg_ub_s:.1f})}}"
