@@ -32,15 +32,14 @@ start_time = time.time()
 use_heterogeneous = False
 
 # Fraction string defining group proportions (must sum to 1)
-group_fractions = "1/4,1/4,1/4,1/4"
+group_fractions = "1/3,1/3,1/3"
 
 # Parameters for each group: (epsilon, chi)
 # Must have same number of tuples as fractions
 group_params = [
-    (0.08, 3),
-    (0.06, 5),
-    (0.04, 7),
-    (0.02, 9),
+    (0.04, 2),
+    (0.06, 3),
+    (0.08, 4),
 ]
 # ================================================================
 

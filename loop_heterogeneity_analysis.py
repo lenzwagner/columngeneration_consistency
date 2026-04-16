@@ -35,9 +35,9 @@ SCENARIOS = {
     },
     'heterogen_3cluster': {
         'name': 'Heterogen (3 Cluster)',
-        'description': '30% Resilient, 50% Average, 20% Sensitive',
+        'description': '33% Resilient, 34% Average, 33% Sensitive',
         'team': 'mixed',
-        'fractions': "3/10,5/10,2/10",  # 30%, 50%, 20%
+        'fractions': "1/3,1/3,1/3",  # 33%, 34%, 33%
         'group_params': [
             (0.04, 2),  # Resilient
             (0.06, 3),  # Average
@@ -68,7 +68,7 @@ SCENARIOS = {
     'moderate': {
         'name': 'Moderate (3 Cluster)',
         'team': 'mixed',
-        'fractions': "3/10,5/10,2/10",
+        'fractions': "1/3,1/3,1/3",
         'group_params': [
             (0.04, 2),  # Resilient
             (0.06, 3),  # Average
