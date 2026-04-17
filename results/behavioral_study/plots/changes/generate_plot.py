@@ -7,12 +7,12 @@ def generate_changes_plot():
     # 1. Paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
     # The excel is 2 levels up from results/behavioral_study/plots/changes/
-    results_path = os.path.join(script_dir, "../../results_cg.xlsx")
+    results_path = os.path.join(script_dir, "../../results_analysis.xlsx")
     output_path = os.path.join(script_dir, "changes_plot.tex")
     
     if not os.path.exists(results_path):
         # Fallback to local
-        results_path = "results_cg.xlsx"
+        results_path = "results_analysis.xlsx"
         if not os.path.exists(results_path):
             print(f"Error: {results_path} not found.")
             return

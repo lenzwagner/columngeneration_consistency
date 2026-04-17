@@ -241,9 +241,9 @@ def generate_undercoverage_plot(df, suffix='abs'):
 
 def main():
     possible_paths = [
-        'results_cg.xlsx',
-        '../../results_cg.xlsx',
-        '../results_cg.xlsx'
+        'results_analysis.xlsx',
+        '../../results_analysis.xlsx',
+        '../results_analysis.xlsx'
     ]
     file_path = None
     for p in possible_paths:
@@ -253,7 +253,7 @@ def main():
             break
             
     if not file_path:
-        print(f"Error: results_cg.xlsx not found.")
+        print(f"Error: results_analysis.xlsx not found.")
         return
             
     df = pd.read_excel(file_path)

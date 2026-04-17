@@ -6,9 +6,9 @@ import os
 def generate_comparison_plot():
     # 1. Load data
     possible_paths = [
-        'results_cg.xlsx',
-        '../../results_cg.xlsx',
-        '../results_cg.xlsx'
+        'results_analysis.xlsx',
+        '../../results_analysis.xlsx',
+        '../results_analysis.xlsx'
     ]
     file_path = None
     for p in possible_paths:
@@ -18,7 +18,7 @@ def generate_comparison_plot():
             break
             
     if not file_path:
-        print("Error: results_cg.xlsx not found.")
+        print("Error: results_analysis.xlsx not found.")
         return
         
     df = pd.read_excel(file_path)
