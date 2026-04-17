@@ -509,9 +509,20 @@ def print_analysis_tables(all_results):
 
 
 def save_summary_csv(all_results):
-    """Save key metrics for the paper text in a vertical CSV format (metric, value)."""
+    """Save key metrics for the paper text in a vertical CSV format with stats."""
     summary_data = []
     
+    def add_stats(metric_name, values):
+        if not values: return
+        summary_data.append({
+            'metric': metric_name,
+            'min': round(np.min(values), 3),
+            'max': round(np.max(values), 3),
+            'median': round(np.median(values), 3),
+            'mean': round(np.mean(values), 3),
+            'std': round(np.std(values), 3)
+        })
+
     # 1. Baseline vs Heterogeneous (Homogen vs Heterogen 3-Cluster)
     if 'homogen' in all_results and 'heterogen_3cluster' in all_results:
         homo_bsv = [r for r in all_results['homogen'] if r['model'] == 'BSV']
@@ -519,31 +530,32 @@ def save_summary_csv(all_results):
         
         if homo_bsv and hetero_bsv:
             # Undercoverage
-            h0_uc = np.mean([r['undercoverage'] for r in homo_bsv])
-            h1_uc = np.mean([r['undercoverage'] for r in hetero_bsv])
-            summary_data.append({'metric': 'baseline_undercoverage_mean', 'value': round(h0_uc, 2)})
-            summary_data.append({'metric': 'heterogeneous_undercoverage_mean', 'value': round(h1_uc, 2)})
-            summary_data.append({'metric': 'undercoverage_reduction_pct', 'value': round((h0_uc - h1_uc) / h0_uc * 100, 2)})
+            h0_uc = [r['undercoverage'] for r in homo_bsv]
+            h1_uc = [r['undercoverage'] for r in hetero_bsv]
+            add_stats('baseline_undercoverage', h0_uc)
+            add_stats('heterogeneous_undercoverage', h1_uc)
+            
+            # Reduction per seed
+            reductions = [((u0 - u1) / u0 * 100) if u0 > 0 else 0 for u0, u1 in zip(h0_uc, h1_uc)]
+            add_stats('undercoverage_reduction_pct', reductions)
             
             # Shift Changes
-            h0_sc = np.mean([r['shift_changes_total'] for r in homo_bsv])
-            h1_sc = np.mean([r['shift_changes_total'] for r in hetero_bsv])
-            summary_data.append({'metric': 'baseline_shift_changes_mean', 'value': round(h0_sc, 2)})
-            summary_data.append({'metric': 'heterogeneous_shift_changes_mean', 'value': round(h1_sc, 2)})
+            h0_sc = [r['shift_changes_total'] for r in homo_bsv]
+            h1_sc = [r['shift_changes_total'] for r in hetero_bsv]
+            add_stats('baseline_shift_changes', h0_sc)
+            add_stats('heterogeneous_shift_changes', h1_sc)
             
             # Perf Loss
-            h0_pl = np.mean([r['perf_loss_total'] for r in homo_bsv])
-            h1_pl = np.mean([r['perf_loss_total'] for r in hetero_bsv])
-            summary_data.append({'metric': 'baseline_perf_loss_mean', 'value': round(h0_pl, 2)})
-            summary_data.append({'metric': 'heterogeneous_perf_loss_mean', 'value': round(h1_pl, 2)})
+            h0_pl = [r['perf_loss_total'] for r in homo_bsv]
+            h1_pl = [r['perf_loss_total'] for r in hetero_bsv]
+            add_stats('baseline_perf_loss', h0_pl)
+            add_stats('heterogeneous_perf_loss', h1_pl)
             
             # Gini
             h0_gini = [r['gini_perf_loss'] for r in homo_bsv]
             h1_gini = [r['gini_perf_loss'] for r in hetero_bsv]
-            summary_data.append({'metric': 'baseline_gini_perf_loss_mean', 'value': round(np.mean(h0_gini), 3)})
-            summary_data.append({'metric': 'baseline_gini_perf_loss_std', 'value': round(np.std(h0_gini), 3)})
-            summary_data.append({'metric': 'heterogeneous_gini_perf_loss_mean', 'value': round(np.mean(h1_gini), 3)})
-            summary_data.append({'metric': 'heterogeneous_gini_perf_loss_std', 'value': round(np.std(h1_gini), 3)})
+            add_stats('baseline_gini_perf_loss', h0_gini)
+            add_stats('heterogeneous_gini_perf_loss', h1_gini)
             
             # Group specific (Worker-Type impact)
             sample_g = hetero_bsv[0]['group_metrics']
@@ -554,19 +566,23 @@ def save_summary_csv(all_results):
             }
             for g_id, label in mapping.items():
                 if g_id in sample_g:
-                    avg_perf = np.mean([r['group_metrics'][g_id]['avg_perf_loss'] for r in hetero_bsv])
-                    avg_sc = np.mean([r['group_metrics'][g_id]['avg_shift_changes'] for r in hetero_bsv])
-                    summary_data.append({'metric': f'avg_perf_loss_{label}', 'value': round(avg_perf, 3)})
-                    summary_data.append({'metric': f'avg_shift_changes_{label}', 'value': round(avg_sc, 3)})
+                    avg_perf_vals = [r['group_metrics'][g_id]['avg_perf_loss'] for r in hetero_bsv]
+                    avg_sc_vals = [r['group_metrics'][g_id]['avg_shift_changes'] for r in hetero_bsv]
+                    add_stats(f'avg_perf_loss_{label}', avg_perf_vals)
+                    add_stats(f'avg_shift_changes_{label}', avg_sc_vals)
 
     # 2. High Heterogeneity
     if 'high' in all_results:
         high_bsv = [r for r in all_results['high'] if r['model'] == 'BSV']
         if high_bsv:
-            summary_data.append({'metric': 'high_heterogeneity_undercoverage_mean', 'value': round(np.mean([r['undercoverage'] for r in high_bsv]), 2)})
-            summary_data.append({'metric': 'high_heterogeneity_gini_mean', 'value': round(np.mean([r['gini_perf_loss'] for r in high_bsv]), 3)})
+            high_uc = [r['undercoverage'] for r in high_bsv]
+            high_gini = [r['gini_perf_loss'] for r in high_bsv]
+            add_stats('high_heterogeneity_undercoverage', high_uc)
+            add_stats('high_heterogeneity_gini', high_gini)
 
     df_summary = pd.DataFrame(summary_data)
+    if not df_summary.empty:
+        df_summary = df_summary[['metric', 'min', 'max', 'median', 'mean', 'std']]
     filename = f'results/paper_text_metrics_{datetime.now().strftime("%d_%m_%Y_%H-%M")}.csv'
     df_summary.to_csv(filename, index=False)
     print(f"\nSummary CSV for paper text saved to: {filename}")
@@ -600,7 +616,18 @@ def save_detailed_stats_csv(all_results):
         csv_rows = []
         for metric_name, dict_key in metrics_mapping:
             # Behavioral values
-            vals_bsv = [r[dict_key] for r in bsv_results if dict_key in r and r[dict_key] is not None]
+            vals_bsv = []
+            for r in bsv_results:
+                if dict_key in r and r[dict_key] is not None:
+                    val = r[dict_key]
+                    if isinstance(val, dict):
+                        v_list = sorted(list(val.values()), reverse=True)
+                        tot = sum(v_list)
+                        if tot > 0:
+                            vals_bsv.append( (sum(v_list[:max(1, len(v_list)//10)]) / tot) * 100 )
+                    else:
+                        vals_bsv.append(val)
+            
             if vals_bsv:
                 csv_rows.append({
                     'metric': f'{metric_name}_behavior',
@@ -611,7 +638,18 @@ def save_detailed_stats_csv(all_results):
                     'std': round(np.std(vals_bsv), 2)
                 })
             # Naive values
-            vals_mlsv = [r[dict_key] for r in mlsv_results if dict_key in r and r[dict_key] is not None]
+            vals_mlsv = []
+            for r in mlsv_results:
+                if dict_key in r and r[dict_key] is not None:
+                    val = r[dict_key]
+                    if isinstance(val, dict):
+                        v_list = sorted(list(val.values()), reverse=True)
+                        tot = sum(v_list)
+                        if tot > 0:
+                            vals_mlsv.append( (sum(v_list[:max(1, len(v_list)//10)]) / tot) * 100 )
+                    else:
+                        vals_mlsv.append(val)
+                        
             if vals_mlsv:
                 csv_rows.append({
                     'metric': f'{metric_name}_naive',
