@@ -28,6 +28,12 @@ This project implements a Column Generation algorithm for solving Nurse Rosterin
 - **cg_behavior.py**: Column Generation with performance consistency modeling
 - **cg_naive.py**: Baseline Column Generation without performance modeling
 
+### Heterogeneity Modules
+
+- **worker_groups.py**: Worker grouping logic for heterogeneous performance parameters
+- **loop_heterogeneity_analysis.py**: Analysis of heterogeneous worker populations
+- **loop_heterogeneity_robustness.py**: Robustness analysis across sensitivity dimensions
+
 ### Utility Modules
 
 - **Utils/setup.py**: Configuration and setup
@@ -117,18 +123,21 @@ Results are saved in:
 
 ```
 columngeneration_consistency/
-├── masterproblem.py           # Restricted Master Problem
-├── subproblem.py              # MIP pricing problem
-├── subproblem_dp.py           # DP label-setting solver
-├── subproblem_dp_optimized.py # Numba-optimized DP solver
-├── subproblem_factory.py      # Solver factory
-├── cg_behavior.py             # CG with performance model
-├── cg_naive.py                # Baseline CG
-├── loop_cg.py                 # Main execution script
-├── loop_compact.py            # Compact model execution
-├── data/                      # Input data (demand scenarios)
-├── results/                   # Output results
-└── Utils/                     # Utility functions
+├── masterproblem.py                   # Restricted Master Problem
+├── subproblem.py                      # MIP pricing problem
+├── subproblem_dp.py                   # DP label-setting solver
+├── subproblem_dp_optimized.py         # Numba-optimized DP solver
+├── subproblem_factory.py              # Solver factory
+├── cg_behavior.py                     # CG with performance model
+├── cg_naive.py                        # Baseline CG
+├── loop_cg.py                         # Main execution script
+├── loop_compact.py                    # Compact model execution
+├── loop_heterogeneity_analysis.py     # Main execution script for worker heterogeneity
+├── loop_heterogeneity_robustness.py   # Robustness analysis for heterogeneity
+├── worker_groups.py                   # Worker heterogeneity modeling
+├── data/                              # Input data (demand scenarios)
+├── results/                           # Output results
+└── Utils/                             # Utility functions
 ```
 
 ## License
