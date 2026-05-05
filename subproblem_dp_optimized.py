@@ -15,6 +15,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 import gurobipy as gu
+from nonlinear_transitions import generate_transitions, classify_transition
 
 try:
     from numba import njit, prange
@@ -32,11 +33,7 @@ except ImportError:
 # NUMBA JIT-COMPILED FUNCTIONS
 # =============================================================================
 
-@njit(cache=True)
-def compute_performance_numba(e: int, omega_max: int, epsilon: float, xi: float) -> float:
-    """Compute performance value from state."""
-    kappa = 1 if e >= omega_max else 0
-    return 1.0 - epsilon * e - xi * kappa
+# Remove compute_performance_numba as it's replaced by pi_k array
 
 
 @njit(cache=True)
@@ -80,6 +77,10 @@ def forward_pass_numba(
     stop_day: int,
     enforce_no_change: int,
     enforce_performance_floor: float,
+    GammaF_flat: np.ndarray,
+    GammaH_flat: np.ndarray,
+    pi_k: np.ndarray,
+    H_max: int
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
     """
     Forward DP pass from day 0 to stop_day.
@@ -133,13 +134,13 @@ def forward_pass_numba(
                     can_off = False
             
             if can_off and n_next < MAX_STATES:
+                tau = 0
                 new_omega = -1 if omega > 0 else (omega - 1 if omega < 0 else -1)
-                new_rho = rho + 1
-                r_new = 1 if new_rho >= chi + 1 else 0
-                new_e = max(0, min(e - r_new, omega_max))
+                new_rho = GammaH_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
+                new_e = GammaF_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
                 
                 if enforce_performance_floor > 0.0:
-                    p_new_off = compute_performance_numba(new_e, omega_max, epsilon, xi)
+                    p_new_off = pi_k[new_e]
                     if p_new_off < enforce_performance_floor:
                         can_off = False
                 
@@ -167,16 +168,15 @@ def forward_pass_numba(
                 if is_forbidden:
                     continue
                 
-                c_new = 1 if (last_worked > 0 and last_worked != shift) else 0
-                if enforce_no_change == 1 and c_new > 0:
+                tau = 4 if last_worked == 0 else (1 if last_worked == shift else (2 if last_worked < shift else 3))
+                if enforce_no_change == 1 and (tau == 2 or tau == 3):
                     continue
                     
                 new_omega = 1 if omega <= 0 else omega + 1
-                new_rho = rho + 1 if c_new == 0 else 0
-                r_new = 1 if new_rho >= chi + 1 else 0
-                new_e = max(0, min(e + c_new - r_new, omega_max))
+                new_rho = GammaH_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
+                new_e = GammaF_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
                 
-                p_new = compute_performance_numba(new_e, omega_max, epsilon, xi)
+                p_new = pi_k[new_e]
                 if enforce_performance_floor > 0.0 and p_new < enforce_performance_floor:
                     continue
                     
@@ -255,6 +255,10 @@ def forward_pass_from_states(
     n_init: int,
     enforce_no_change: int,
     enforce_performance_floor: float,
+    GammaF_flat: np.ndarray,
+    GammaH_flat: np.ndarray,
+    pi_k: np.ndarray,
+    H_max: int
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
     """
     Forward DP pass from start_day to end, starting from given states.
@@ -311,13 +315,13 @@ def forward_pass_from_states(
                     can_off = False
             
             if can_off and n_next < MAX_STATES:
+                tau = 0
                 new_omega = -1 if omega > 0 else (omega - 1 if omega < 0 else -1)
-                new_rho = rho + 1
-                r_new = 1 if new_rho >= chi + 1 else 0
-                new_e = max(0, min(e - r_new, omega_max))
+                new_rho = GammaH_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
+                new_e = GammaF_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
                 
                 if enforce_performance_floor > 0.0:
-                    p_new_off = compute_performance_numba(new_e, omega_max, epsilon, xi)
+                    p_new_off = pi_k[new_e]
                     if p_new_off < enforce_performance_floor:
                         can_off = False
                 
@@ -345,16 +349,15 @@ def forward_pass_from_states(
                 if is_forbidden:
                     continue
                 
-                c_new = 1 if (last_worked > 0 and last_worked != shift) else 0
-                if enforce_no_change == 1 and c_new > 0:
+                tau = 4 if last_worked == 0 else (1 if last_worked == shift else (2 if last_worked < shift else 3))
+                if enforce_no_change == 1 and (tau == 2 or tau == 3):
                     continue
                     
                 new_omega = 1 if omega <= 0 else omega + 1
-                new_rho = rho + 1 if c_new == 0 else 0
-                r_new = 1 if new_rho >= chi + 1 else 0
-                new_e = max(0, min(e + c_new - r_new, omega_max))
+                new_rho = GammaH_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
+                new_e = GammaF_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
                 
-                p_new = compute_performance_numba(new_e, omega_max, epsilon, xi)
+                p_new = pi_k[new_e]
                 if enforce_performance_floor > 0.0 and p_new < enforce_performance_floor:
                     continue
                     
@@ -667,6 +670,14 @@ class SubproblemDPNumba:
         for d_idx in range(n_days - 1, -1, -1):
             max_dual = max(self.duals_flat[d_idx * n_shifts:(d_idx + 1) * n_shifts])
             self.suffix_bounds[d_idx] = self.suffix_bounds[d_idx + 1] + max_dual
+            
+        # Prepare nonlinear transitions
+        nl_spec = getattr(self, "nl_spec", None)
+        GammaF, GammaH, pi_k = generate_transitions(self.epsilon, self.chi, self.omega_max, nl_spec)
+        self.H_max = GammaH.shape[1] - 1
+        self.GammaF_flat = GammaF.flatten().astype(np.int64)
+        self.GammaH_flat = GammaH.flatten().astype(np.int64)
+        self.pi_k = pi_k.astype(np.float64)
 
     def buildModel(self):
         pass
@@ -692,7 +703,8 @@ class SubproblemDPNumba:
                     n_days, n_shifts, self.duals_flat, self.duals_i,
                     self.epsilon, self.chi, self.omega_max, self.xi,
                     self.Min_WD, self.Max_WD, self.Days_Off,
-                    self.suffix_bounds, mid_day, enc_nc, enc_pf
+                    self.suffix_bounds, mid_day, enc_nc, enc_pf,
+                    self.GammaF_flat, self.GammaH_flat, self.pi_k, self.H_max
                 )
                 
                 if n_fwd > 0:
@@ -701,7 +713,8 @@ class SubproblemDPNumba:
                         n_days, n_shifts, self.duals_flat,
                         self.epsilon, self.chi, self.omega_max, self.xi,
                         self.Min_WD, self.Max_WD, self.Days_Off,
-                        mid_day, fwd_states, fwd_costs, n_fwd, enc_nc, enc_pf
+                        mid_day, fwd_states, fwd_costs, n_fwd, enc_nc, enc_pf,
+                        self.GammaF_flat, self.GammaH_flat, self.pi_k, self.H_max
                     )
                     
                     if n_second > 0:
@@ -742,7 +755,8 @@ class SubproblemDPNumba:
             n_days, n_shifts, self.duals_flat, self.duals_i,
             self.epsilon, self.chi, self.omega_max, self.xi,
             self.Min_WD, self.Max_WD, self.Days_Off,
-            self.suffix_bounds, n_days, enc_nc, enc_pf
+            self.suffix_bounds, n_days, enc_nc, enc_pf,
+            self.GammaF_flat, self.GammaH_flat, self.pi_k, self.H_max
         )
         
         if n_states > 0:
