@@ -1,6 +1,6 @@
 import gurobipy as gu
-import statistics
 import numpy as np
+from Utils.metrics import calculate_gini, compute_autocorrelation
 
 
 class MasterProblem:
@@ -220,9 +220,9 @@ class MasterProblem:
     def finalSolve(self, timeLimit):
         try:
             self.model.Params.IntegralityFocus = 1
-            self.model.Params.FeasibilityTol = 1e-9
+            self.model.Params.FeasibilityTol = 1e-6
             self.model.Params.BarConvTol = 0.0
-            self.model.Params.MIPGap = 1e-2
+            self.model.Params.MIPGap = 0.05
             self.model.Params.OutputFlag = 1
             
             # Set lambda variables to integer (per-group indexing)
@@ -305,182 +305,86 @@ class MasterProblem:
     def get_objective(self):
         return self.model.ObjVal
 
-    def calc_behavior(self, lst, ls_sc, scale):
-        """
-        Calculate behavior metrics.
-        
-        Key insight: undercoverage = understaffing + perf_loss
-        - undercoverage: from u-variables in MP (total shortage accounting for perf)
-        - perf_loss: Σ(1-p) for all working shifts (p>0) - the "effective" capacity loss
-        - understaffing: undercoverage - perf_loss (shortage due to not enough workers)
-        
-        Args:
-            lst: Performance values (ls_perf) - flattened list [worker1_t1s1, worker1_t1s2, ...]
-            ls_sc: Shift change indicators
-            scale: Scaling factor for normalization
-        """
+    def _final_metrics_package(self, uc, us, pl, co, scale):
+        """Unified return structure for both calc methods."""
+        n = len(self.nurses)
+        return (
+            round(uc, 5), 
+            round(us, 5), 
+            round(pl, 5), 
+            round(co, 5), 
+            round(co / (n * scale), 5),
+            round(uc / (n * scale), 5),
+            round(us / (n * scale), 5),
+            round(pl / (n * scale), 5)
+        )
+
+    def calc_behavior(self, ls_perf, ls_sc, scale):
+        """Calculate behavior metrics from performance values."""
         consistency = sum(ls_sc)
-        consistency_norm = sum(ls_sc) / (len(self.nurses) * scale)
         
         # Expected length: n_workers * n_days * n_shifts
-        n_workers = len(self.nurses)
-        n_days = len(self.days)
-        n_shifts = len(self.shifts)
-        expected_length = n_workers * n_days * n_shifts
+        expected_length = len(self.nurses) * len(self.days) * len(self.shifts)
         
-        # Validate and fix length mismatch (can happen with heterogeneous groups)
-        if len(lst) != expected_length:
-            print(f"Warning: lst length ({len(lst)}) != expected ({expected_length}). Padding/truncating.")
-            if len(lst) < expected_length:
-                lst = list(lst) + [0.0] * (expected_length - len(lst))
+        # Validate and fix length mismatch
+        if len(ls_perf) != expected_length:
+            if len(ls_perf) < expected_length:
+                ls_perf = list(ls_perf) + [0.0] * (expected_length - len(ls_perf))
             else:
-                lst = lst[:expected_length]
+                ls_perf = ls_perf[:expected_length]
         
-        # Calculate perf_loss: U^Perf = Σ(1-p) for all p > 0
-        # This is the capacity lost due to reduced performance
-        perfloss = round(sum(1.0 - p for p in lst if p > 0), 5)
-        
-        # Undercoverage from u-variables in MP (total shortage including perf effect)
+        perfloss = round(sum(1.0 - p for p in ls_perf if p > 0), 5)
         undercoverage = round(sum(self.u[t, k].X for t in self.days for k in self.shifts), 3)
-        
-        # Understaffing = undercoverage - perfloss
-        # This represents shortage due to insufficient worker assignments (not performance)
         understaffing = round(max(0, undercoverage - perfloss), 5)
 
-        undercoverage_norm = undercoverage / (len(self.nurses) * scale)
-        understaffing_norm = understaffing / (len(self.nurses) * scale)
-        perfloss_norm = perfloss / (len(self.nurses) * scale)
-
-        return undercoverage, understaffing, perfloss, consistency, consistency_norm, undercoverage_norm, understaffing_norm, perfloss_norm
+        return self._final_metrics_package(undercoverage, understaffing, perfloss, consistency, scale)
 
     def calc_naive(self, lst, ls_sc, ls_r, mue, scale):
+        """Calculate metrics using naive (post-hoc) performance degradation."""
         consistency = sum(ls_sc)
         perf_ls = []
-        consistency_norm = sum(ls_sc) / (len(self.nurses) * scale)
-        self.sum_all_doctors = 0
-        sublist_length = len(lst) // len(self.nurses)
-        sublist_length_short = len(ls_sc) // len(self.nurses)
-        p_values = [lst[i * sublist_length:(i + 1) * sublist_length] for i in range(len(self.nurses))]
-        sc_values2 = [ls_sc[i * sublist_length_short:(i + 1) * sublist_length_short] for i in range(len(self.nurses))]
-        r_values2 = [ls_r[i * sublist_length_short:(i + 1) * sublist_length_short] for i in range(len(self.nurses))]
+        n_nurses = len(self.nurses)
+        
+        sublist_length = len(lst) // n_nurses
+        sublist_length_short = len(ls_sc) // n_nurses
+        
+        p_values = [lst[i * sublist_length:(i + 1) * sublist_length] for i in range(n_nurses)]
+        sc_values2 = [ls_sc[i * sublist_length_short:(i + 1) * sublist_length_short] for i in range(n_nurses)]
+        r_values2 = [ls_r[i * sublist_length_short:(i + 1) * sublist_length_short] for i in range(n_nurses)]
         x_values = [[1.0 if value > 0 else 0.0 for value in sublist] for sublist in p_values]
-        u_results = round(sum(self.u[t, k].X for t in self.days for k in self.shifts), 5)
+        
+        u_results = sum(self.u[t, k].X for t in self.days for k in self.shifts)
         sum_xWerte = [sum(row[i] for row in x_values) for i in range(len(x_values[0]))]
-        self.sum_xWerte = sum_xWerte
-        self.sum_all_doctors = 0
-        self.sum_values = sum(self.demand_values)
-        self.cumulative_sum = [0]
-        self.doctors_cumulative_multiplied = []
-        self.vals = self.demand_values
-        self.comp_result = []
-        for i in range(len(self.vals)):
-            if self.vals[i] < self.sum_xWerte[i]:
-                self.comp_result.append(0)
-            else:
-                self.comp_result.append(1)
-        index = 0
-        self.doctors_cumulative_multiplied = []
+        
+        sum_all_doctors = 0
         cumulative_total = [0] * (len(self.days) * len(self.shifts))
-        for i in self.nurses:
-            doctor_values = sc_values2[index]
-            r_values = r_values2[index]
-            x_i_values = x_values[index]
-            index += 1
-            self.cumulative_sum = [0]
+        
+        comp_result = [0 if self.demand_values[i] < sum_xWerte[i] else 1 for i in range(len(self.demand_values))]
+        
+        for idx in range(n_nurses):
+            doctor_values = sc_values2[idx]
+            r_values = r_values2[idx]
+            x_i_values = x_values[idx]
+            
+            cumulative_sum = [0]
             for i in range(1, len(doctor_values)):
-                if r_values[i] == 1 and doctor_values[i] == 0 and self.cumulative_sum[-1] > 0:
-                    self.cumulative_sum.append(self.cumulative_sum[-1] - 1)
-                elif r_values[i] == 1 and doctor_values[i] == 1 and self.cumulative_sum[-1] > 0:
-                    self.cumulative_sum.append(self.cumulative_sum[-1])
-                elif r_values[i] == 1 and doctor_values[i] == 0 and self.cumulative_sum[-1] == 0:
-                    self.cumulative_sum.append(self.cumulative_sum[-1])
-                elif r_values[i] == 1 and doctor_values[i] == 1 and self.cumulative_sum[-1] == 0:
-                    self.cumulative_sum.append(self.cumulative_sum[-1])
+                if r_values[i] == 1 and cumulative_sum[-1] > 0:
+                    reduction = 1 if doctor_values[i] == 0 else 0
+                    cumulative_sum.append(max(0, cumulative_sum[-1] - reduction))
                 else:
-                    self.cumulative_sum.append(self.cumulative_sum[-1] + doctor_values[i])
-            self.cumulative_sum1 = []
-            for element in self.cumulative_sum:
-                for _ in range(len(self.shifts)):
-                    self.cumulative_sum1.append(element)
-            self.cumulative_values = [x * mue for x in self.cumulative_sum1]
-            for val in [x * mue for x in self.cumulative_sum]:
-                perf_ls.append(round(1 - val, 2))
-            self.multiplied_values = [self.cumulative_values[j] * x_i_values[j] for j in range(len(self.cumulative_values))]
-            self.multiplied_values1 = [self.multiplied_values[j] * self.comp_result[j] for j in range(len(self.multiplied_values))]
-            self.total_sum = sum(self.multiplied_values1)
-            self.doctors_cumulative_multiplied.append(self.total_sum)
-            self.sum_all_doctors += self.total_sum
-            cumulative_total = [cumulative_total[j] + self.multiplied_values1[j] for j in range(len(cumulative_total))]
-        undercoverage = u_results + self.sum_all_doctors
-        understaffing = u_results
-        perfloss = self.sum_all_doctors
-        undercoverage_norm = undercoverage / (len(self.nurses) * scale)
-        understaffing_norm = understaffing / (len(self.nurses) * scale)
-        perfloss_norm = perfloss / (len(self.nurses) * scale)
-        return undercoverage, understaffing, perfloss, consistency, consistency_norm, undercoverage_norm, understaffing_norm, perfloss_norm, perf_ls, cumulative_total
-
-    def average_nr_of(self, lst, num_sublists):
-        total_length = len(lst)
-        sublist_size = total_length // num_sublists
-        sublists = [lst[i:i + sublist_size] for i in range(0, total_length, sublist_size)]
-        indices_list = []
-        for sublist in sublists:
-            indices = [index + 1 for index, value in enumerate(sublist) if value == 1.0]
-            indices_list.append(indices)
-        sums = [sum(sublist) for sublist in sublists]
-        mean_value = round(statistics.mean(sums), 5)
-        min_value = min(sums)
-        max_value = max(sums)
-        return sums, mean_value, min_value, max_value, indices_list
-
-    def calculate_variation_coefficient(self, shift_change_days):
-        if len(shift_change_days) < 2:
-            return 0
-        sorted_days = sorted(shift_change_days)
-        intervals = np.diff(sorted_days)
-        mean = np.mean(intervals)
-        std_dev = np.std(intervals)
-        variation_coefficient = (std_dev / mean)
-        return round(variation_coefficient, 5)
-
-    def gini_coefficient2(self, x):
-        x = np.asarray(x)
-        if len(x) <= 1:
-            return 0
-        sorted_x = np.sort(x)
-        index = np.arange(1, len(x) + 1)
-        n = len(x)
-        return ((2 * np.sum(index * sorted_x)) / (n * np.sum(x))) - (n + 1) / n
-
-    def gini_coefficient(self, ls_sc, num_sublists):
-        total_length = len(ls_sc)
-        sublist_size = total_length // num_sublists
-        sublists = [ls_sc[i:i + sublist_size] for i in range(0, total_length, sublist_size)]
-        nested = []
-        for sublist in sublists:
-            cleaned_sublist = [0.0 if x == -0.0 else x for x in sublist]
-            nested.append(cleaned_sublist)
-        return [self.gini_coefficient2(indices) for indices in nested]
-
-    def compute_autocorrelation_at_lag(self, series, lag):
-        n = len(series)
-        if lag >= n:
-            raise ValueError("Lag is too large for the length of the series.")
-        mean = np.mean(series)
-        var = np.var(series)
-        cov = np.sum((series[:n - lag] - mean) * (series[lag:] - mean)) / n
-        autocorrelation = cov / var
-        return autocorrelation
-
-    def autoccorrel(self, ls, num_sublists, lags):
-        total_length = len(ls)
-        sublist_size = total_length // num_sublists
-        sublists = [ls[i:i + sublist_size] for i in range(0, total_length, sublist_size)]
-        nested = []
-        for sublist in sublists:
-            cleaned_sublist = [0.0 if x == -0.0 else x for x in sublist]
-            nested.append(cleaned_sublist)
-        return [self.compute_autocorrelation_at_lag(indices, lags) for indices in nested]
+                    cumulative_sum.append(cumulative_sum[-1] + doctor_values[i])
+            
+            perf_vals = [round(1 - (val * mue), 2) for val in cumulative_sum]
+            perf_ls.extend(perf_vals)
+            
+            multiplied = [ (val * mue) * x_i_values[j * len(self.shifts) + s] * comp_result[j * len(self.shifts) + s] 
+                          for j, val in enumerate(cumulative_sum) for s in range(len(self.shifts))]
+            
+            sum_all_doctors += sum(multiplied)
+            cumulative_total = [cumulative_total[j] + multiplied[j] for j in range(len(cumulative_total))]
+        
+        metrics = self._final_metrics_package(u_results + sum_all_doctors, u_results, sum_all_doctors, consistency, scale)
+        return (*metrics, perf_ls, cumulative_total)
 
     def getUndercoverage(self):
         return [self.u[t, k].X for t in self.days for k in self.shifts]

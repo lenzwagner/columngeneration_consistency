@@ -135,6 +135,18 @@ class Subproblem:
             self.model.addLConstr(self.e[t] >= self.sc[t] + self.h[t - 1] - 1)
         self.model.update()
 
+        # Add explicit constraints for threshold analysis
+        if getattr(self, 'enforce_no_change', False):
+            for t in self.days:
+                self.model.addLConstr(self.sc[t] == 0)
+        
+        tau = getattr(self, 'enforce_performance_floor', None)
+        if tau is not None:
+            for t in self.days:
+                self.model.addLConstr(self.p[t] >= tau)
+        self.model.update()
+
+
     def generateRegConstraints(self):
         for i in [self.index]:
             for t in range(1, len(self.days) - self.Max_WD_i[i] + 1):

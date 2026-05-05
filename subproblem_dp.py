@@ -442,6 +442,10 @@ class SubproblemDP:
         # Calculate performance value
         kappa = 1 if new_label.e >= self.omega_max else 0
         p_new = 1.0 - self.epsilon * new_label.e - self.xi * kappa
+        
+        pf = getattr(self, 'enforce_performance_floor', None)
+        if pf is not None and p_new < pf:
+            return None
 
         # No cost contribution (no work)
         new_label.cost = label.cost
@@ -465,6 +469,9 @@ class SubproblemDP:
         c_new = 0
         if label.last_worked_shift is not None and label.last_worked_shift != shift:
             c_new = 1
+            
+        if getattr(self, 'enforce_no_change', False) and c_new > 0:
+            return None
 
         # Update shift tracking
         new_label.s_last = shift
@@ -489,6 +496,10 @@ class SubproblemDP:
         # Calculate performance value
         kappa = 1 if new_label.e >= self.omega_max else 0
         p_new = 1.0 - self.epsilon * new_label.e - self.xi * kappa
+
+        pf = getattr(self, 'enforce_performance_floor', None)
+        if pf is not None and p_new < pf:
+            return None
 
         # Calculate cost contribution (reduced cost)
         dual_value = self.duals_ts.get((next_day, shift), 0.0)

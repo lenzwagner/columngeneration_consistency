@@ -22,7 +22,8 @@ from Utils.aggundercover import *
 from Utils.demand import *
 from Utils.gcutil import generate_dict_from_excel
 from worker_groups import create_groups_from_fractions, create_homogeneous_group
-from loop_heterogeneity_analysis import calculate_group_metrics, save_detailed_stats_csv
+from Utils.metrics import calculate_group_metrics
+from loop_heterogeneity_analysis import save_detailed_stats_csv
 
 # ============================================================================
 # EXPERIMENT CONFIGURATIONS

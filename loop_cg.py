@@ -6,6 +6,7 @@ from Utils.aggundercover import *
 from datetime import *
 from Utils.demand import *
 from worker_groups import create_groups_from_fractions, create_homogeneous_group
+from Utils.metrics import evaluate_inequality
 import time
 import os
 os.makedirs("results", exist_ok=True)

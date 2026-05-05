@@ -18,7 +18,8 @@ except ImportError:
 
 
 def create_subproblem(solver_type: str, duals_i, duals_ts, df, i, iteration,
-                     eps, Min_WD_i, Max_WD_i, chi, use_bidir=False):
+                     eps, Min_WD_i, Max_WD_i, chi, use_bidir=False,
+                     enforce_no_change=False, enforce_performance_floor=None):
     """
     Factory function to create a subproblem solver.
 
@@ -48,25 +49,41 @@ def create_subproblem(solver_type: str, duals_i, duals_ts, df, i, iteration,
     solver = solver_type.lower()
     
     if solver == 'mip':
-        return Subproblem(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
+        sp = Subproblem(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
+        sp.enforce_no_change = enforce_no_change
+        sp.enforce_performance_floor = enforce_performance_floor
+        return sp
     
     elif solver == 'dp':
-        return SubproblemDP(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
+        sp = SubproblemDP(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
+        sp.enforce_no_change = enforce_no_change
+        sp.enforce_performance_floor = enforce_performance_floor
+        return sp
     
     elif solver == 'labeling':
         if not NUMBA_AVAILABLE or SubproblemDPNumba is None:
             print("Warning: Numba not available, falling back to Python DP")
-            return SubproblemDP(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
+            sp = SubproblemDP(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
+            sp.enforce_no_change = enforce_no_change
+            sp.enforce_performance_floor = enforce_performance_floor
+            return sp
         sp = SubproblemDPNumba(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
         sp._use_bidir = use_bidir  # Flag for bidirectional mode
+        sp.enforce_no_change = enforce_no_change
+        sp.enforce_performance_floor = enforce_performance_floor
         return sp
     
     elif solver == 'labeling_bidir':
         if not NUMBA_AVAILABLE or SubproblemDPNumba is None:
             print("Warning: Numba not available, falling back to Python DP")
-            return SubproblemDP(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
+            sp = SubproblemDP(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
+            sp.enforce_no_change = enforce_no_change
+            sp.enforce_performance_floor = enforce_performance_floor
+            return sp
         sp = SubproblemDPNumba(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
         sp._use_bidir = True  # Force bidirectional mode
+        sp.enforce_no_change = enforce_no_change
+        sp.enforce_performance_floor = enforce_performance_floor
         return sp
     
     else:

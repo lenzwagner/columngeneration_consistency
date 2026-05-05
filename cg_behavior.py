@@ -6,6 +6,7 @@ from subproblem import *
 from subproblem_factory import create_subproblem
 from Utils.gcutil import *
 from Utils.compactsolver import *
+from Utils.metrics import evaluate_inequality
 from worker_groups import create_homogeneous_group, get_worker_params
 
 
@@ -73,7 +74,7 @@ def generate_feasible_schedule_heuristic(T, K, eps=0.06):
         'elow': elow
     }
 
-def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi, threshold, time_cg, I, T, K, scale, sp_solver='mip', start_values=None, save_lp=False, worker_groups=None, use_heuristic_start=True):
+def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi, threshold, time_cg, I, T, K, scale, sp_solver='mip', start_values=None, save_lp=False, worker_groups=None, use_heuristic_start=True, use_null_column=False, enforce_no_change=False, enforce_performance_floor=None):
     # **** Column Generation ****
     # Prerequisites
     modelImprovable = True
@@ -84,7 +85,21 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
 
     # Get Starting Solutions (or use provided ones)
     if start_values is None:
-        if use_heuristic_start:
+        if use_null_column:
+            print("Using NULL COLUMN for initial solution...")
+            start_values_by_group = {}
+            for group_name, group in worker_groups.items():
+                start_values_by_group[group_name] = {
+                    'perf': {(t, s): 0.0 for t in T for s in K},
+                    'p': {t: 1.0 for t in T},
+                    'x': {(t, s): 0.0 for t in T for s in K},
+                    'c': {t: 0.0 for t in T},
+                    'r': {t: 0.0 for t in T},
+                    'eup': {t: 0.0 for t in T},
+                    'elow': {t: 0.0 for t in T},
+                    'worker_ids': group.worker_ids
+                }
+        elif use_heuristic_start:
             # Fast heuristic: generate simple feasible schedule for all workers
             print("Using HEURISTIC for initial solution...")
             heuristic_sol = generate_feasible_schedule_heuristic(T, K, eps)
@@ -244,7 +259,9 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
             # Build SP with group-specific (epsilon, chi)
             subproblem = create_subproblem(
                 sp_solver, group_dual_i, duals_ts, data, representative_worker, itr,
-                group.epsilon, Min_WD_i, Max_WD_i, group.chi
+                group.epsilon, Min_WD_i, Max_WD_i, group.chi,
+                enforce_no_change=enforce_no_change,
+                enforce_performance_floor=enforce_performance_floor
             )
             subproblem.buildModel()
 

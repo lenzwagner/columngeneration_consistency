@@ -3,29 +3,38 @@ from subproblem import *
 from subproblem_factory import create_subproblem
 from Utils.gcutil import *
 from Utils.compactsolver import *
+from Utils.metrics import evaluate_inequality
 
-def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi, threshold, time_cg, I, T, K, epsi, scale, sp_solver='mip'):
+def column_generation_naive(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi, threshold, time_cg, I, T, K, epsi, scale, sp_solver='mip', use_null_column=False):
     # **** Column Generation ****
     # Prerequisites
     modelImprovable = True
 
     # Get Starting Solutions
-    problem_start = Problem(data, demand_dict, eps, Min_WD_i, Max_WD_i, chi)
-    problem_start.buildLinModel()
-    problem_start.model.Params.MIPFocus = 1
-    problem_start.model.Params.Heuristics = 1
-    problem_start.model.Params.RINS = 10
-    problem_start.model.Params.TimeLimit = time_cg_init
-    problem_start.model.update()
-    problem_start.model.optimize()
+    if use_null_column:
+        print("Using NULL COLUMN for initial solution...")
+        start_values_perf = {(t, s): 0.0 for t in T for s in K}
+        start_values_p = {t: 1.0 for t in T}
+        start_values_x = {(t, s): 0.0 for t in T for s in K}
+        start_values_r = {t: 0.0 for t in T}
+        start_values_c = {t: 0.0 for t in T}
+    else:
+        problem_start = Problem(data, demand_dict, eps, Min_WD_i, Max_WD_i, chi)
+        problem_start.buildLinModel()
+        problem_start.model.Params.MIPFocus = 1
+        problem_start.model.Params.Heuristics = 1
+        problem_start.model.Params.RINS = 10
+        problem_start.model.Params.TimeLimit = time_cg_init
+        problem_start.model.update()
+        problem_start.model.optimize()
 
-    # Schedules
-    # Create
-    start_values_perf = {(t, s): problem_start.perf[1, t, s].x for t in T for s in K}
-    start_values_p = {(t): problem_start.p[1, t].x for t in T}
-    start_values_x = {(t, s): problem_start.x[1, t, s].x for t in T for s in K}
-    start_values_r = {(t): problem_start.r[1, t].x for t in T}
-    start_values_c = {(t): problem_start.sc[1, t].x for t in T}
+        # Schedules
+        # Create
+        start_values_perf = {(t, s): problem_start.perf[1, t, s].x for t in T for s in K}
+        start_values_p = {(t): problem_start.p[1, t].x for t in T}
+        start_values_x = {(t, s): problem_start.x[1, t, s].x for t in T for s in K}
+        start_values_r = {(t): problem_start.r[1, t].x for t in T}
+        start_values_c = {(t): problem_start.sc[1, t].x for t in T}
 
     # Initialize iterations
     itr = 0

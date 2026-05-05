@@ -78,6 +78,8 @@ def forward_pass_numba(
     days_off: int,
     suffix_bounds: np.ndarray,
     stop_day: int,
+    enforce_no_change: int,
+    enforce_performance_floor: float,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
     """
     Forward DP pass from day 0 to stop_day.
@@ -136,11 +138,17 @@ def forward_pass_numba(
                 r_new = 1 if new_rho >= chi + 1 else 0
                 new_e = max(0, min(e - r_new, omega_max))
                 
-                next_states[n_next] = pack_state(new_omega, new_rho, new_e, last_worked, 0, first_flag)
-                next_costs[n_next] = cost
-                next_paths[n_next, :] = curr_paths[i, :]
-                next_paths[n_next, next_day] = -1  # Day off
-                n_next += 1
+                if enforce_performance_floor > 0.0:
+                    p_new_off = compute_performance_numba(new_e, omega_max, epsilon, xi)
+                    if p_new_off < enforce_performance_floor:
+                        can_off = False
+                
+                if can_off:
+                    next_states[n_next] = pack_state(new_omega, new_rho, new_e, last_worked, 0, first_flag)
+                    next_costs[n_next] = cost
+                    next_paths[n_next, :] = curr_paths[i, :]
+                    next_paths[n_next, next_day] = -1  # Day off
+                    n_next += 1
             
             # Option 2: Work each shift
             for shift in range(1, n_shifts + 1):
@@ -160,12 +168,18 @@ def forward_pass_numba(
                     continue
                 
                 c_new = 1 if (last_worked > 0 and last_worked != shift) else 0
+                if enforce_no_change == 1 and c_new > 0:
+                    continue
+                    
                 new_omega = 1 if omega <= 0 else omega + 1
                 new_rho = rho + 1 if c_new == 0 else 0
                 r_new = 1 if new_rho >= chi + 1 else 0
                 new_e = max(0, min(e + c_new - r_new, omega_max))
                 
                 p_new = compute_performance_numba(new_e, omega_max, epsilon, xi)
+                if enforce_performance_floor > 0.0 and p_new < enforce_performance_floor:
+                    continue
+                    
                 dual_val = duals_flat[(next_day - 1) * n_shifts + (shift - 1)]
                 new_cost = cost - dual_val * p_new
                 
@@ -239,6 +253,8 @@ def forward_pass_from_states(
     init_states: np.ndarray,
     init_costs: np.ndarray,
     n_init: int,
+    enforce_no_change: int,
+    enforce_performance_floor: float,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
     """
     Forward DP pass from start_day to end, starting from given states.
@@ -300,12 +316,18 @@ def forward_pass_from_states(
                 r_new = 1 if new_rho >= chi + 1 else 0
                 new_e = max(0, min(e - r_new, omega_max))
                 
-                next_states[n_next] = pack_state(new_omega, new_rho, new_e, last_worked, 0, first_flag)
-                next_costs[n_next] = cost
-                next_init_idx[n_next] = init_idx
-                next_paths[n_next, :] = curr_paths[i, :]
-                next_paths[n_next, next_day] = -1
-                n_next += 1
+                if enforce_performance_floor > 0.0:
+                    p_new_off = compute_performance_numba(new_e, omega_max, epsilon, xi)
+                    if p_new_off < enforce_performance_floor:
+                        can_off = False
+                
+                if can_off:
+                    next_states[n_next] = pack_state(new_omega, new_rho, new_e, last_worked, 0, first_flag)
+                    next_costs[n_next] = cost
+                    next_init_idx[n_next] = init_idx
+                    next_paths[n_next, :] = curr_paths[i, :]
+                    next_paths[n_next, next_day] = -1
+                    n_next += 1
             
             # Option 2: Work each shift
             for shift in range(1, n_shifts + 1):
@@ -324,12 +346,18 @@ def forward_pass_from_states(
                     continue
                 
                 c_new = 1 if (last_worked > 0 and last_worked != shift) else 0
+                if enforce_no_change == 1 and c_new > 0:
+                    continue
+                    
                 new_omega = 1 if omega <= 0 else omega + 1
                 new_rho = rho + 1 if c_new == 0 else 0
                 r_new = 1 if new_rho >= chi + 1 else 0
                 new_e = max(0, min(e + c_new - r_new, omega_max))
                 
                 p_new = compute_performance_numba(new_e, omega_max, epsilon, xi)
+                if enforce_performance_floor > 0.0 and p_new < enforce_performance_floor:
+                    continue
+                    
                 dual_val = duals_flat[(next_day - 1) * n_shifts + (shift - 1)]
                 new_cost = cost - dual_val * p_new
                 
@@ -655,12 +683,16 @@ class SubproblemDPNumba:
                 # Bidirectional DP: forward to midpoint, continue forward to end, merge
                 mid_day = n_days // 2
                 
+                enc_nc = 1 if getattr(self, 'enforce_no_change', False) else 0
+                enc_pf = getattr(self, 'enforce_performance_floor', None)
+                enc_pf = float(enc_pf) if enc_pf is not None else 0.0
+                
                 # Forward pass 1: day 0 to mid_day
                 fwd_states, fwd_costs, fwd_paths, n_fwd = forward_pass_numba(
                     n_days, n_shifts, self.duals_flat, self.duals_i,
                     self.epsilon, self.chi, self.omega_max, self.xi,
                     self.Min_WD, self.Max_WD, self.Days_Off,
-                    self.suffix_bounds, mid_day
+                    self.suffix_bounds, mid_day, enc_nc, enc_pf
                 )
                 
                 if n_fwd > 0:
@@ -669,7 +701,7 @@ class SubproblemDPNumba:
                         n_days, n_shifts, self.duals_flat,
                         self.epsilon, self.chi, self.omega_max, self.xi,
                         self.Min_WD, self.Max_WD, self.Days_Off,
-                        mid_day, fwd_states, fwd_costs, n_fwd
+                        mid_day, fwd_states, fwd_costs, n_fwd, enc_nc, enc_pf
                     )
                     
                     if n_second > 0:
@@ -702,11 +734,15 @@ class SubproblemDPNumba:
 
     def _solve_forward_only(self, n_days, n_shifts):
         """Standard forward-only DP solve."""
+        enc_nc = 1 if getattr(self, 'enforce_no_change', False) else 0
+        enc_pf = getattr(self, 'enforce_performance_floor', None)
+        enc_pf = float(enc_pf) if enc_pf is not None else 0.0
+        
         states, costs, paths, n_states = forward_pass_numba(
             n_days, n_shifts, self.duals_flat, self.duals_i,
             self.epsilon, self.chi, self.omega_max, self.xi,
             self.Min_WD, self.Max_WD, self.Days_Off,
-            self.suffix_bounds, n_days
+            self.suffix_bounds, n_days, enc_nc, enc_pf
         )
         
         if n_states > 0:

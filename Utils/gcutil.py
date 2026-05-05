@@ -20,43 +20,7 @@ def generate_dict_from_excel(file_path, value_I, pattern, scenario):
         print("No data.")
         return {}
 
-def evaluate_inequality(lst, T, I_given=None):
-    # Determine I
-    if I_given is None:
-        I = math.ceil(len(lst) / T)
-    else:
-        I = I_given
-        if len(lst) > T * I:
-            raise ValueError("Provided I is too small for the length of the list")
-
-    # Block sums
-    block_sums = {}
-    for i in range(I):
-        start = i * T
-        end = min((i + 1) * T, len(lst))
-        block_sums[i + 1] = sum(lst[start:end])
-
-    # Spread calculation
-    max_min_spread = max(block_sums.values()) - min(block_sums.values())
-    if sum(block_sums.values()) == 0:
-        load_share = None
-    else:
-        load_share = round(max(block_sums.values()) / sum(block_sums.values()), 3)
-
-    # Gini calculation
-    values = list(block_sums.values())
-    n = len(values)
-    s = sum(values)
-
-    if s == 0:
-        gini = 0.0
-    else:
-        x_sorted = sorted(values)
-        numerator = 2 * sum((i+1) * xi for i, xi in enumerate(x_sorted))
-        denom = n * s
-        gini = numerator / denom - (n + 1) / n
-
-    return block_sums, round(max_min_spread, 3), load_share, round(gini, 3)
+# evaluate_inequality has been moved to Utils.metrics
 
 
 # **** Print Results Table ****

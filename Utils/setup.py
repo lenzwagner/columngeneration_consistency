@@ -1,20 +1,20 @@
 import pandas as pd
 from Utils.gcutil import create_individual_working_list
 
-# Sets (formerly loaded from data/Arzt.xlsx and data/NF.xlsx)
-# Arzt.xlsx – sheet 'Arzt'
+# Sets (formerly loaded from Physicians.xlsx and Shifts.xlsx)
+# Physicians setup (formerlyPhysician.xlsx – sheet 'Physician')
 work = pd.DataFrame({
     'Id':      list(range(1, 21)),
     'WT':      [40.0, 40.0, 40.0, 40.0] + [None] * 16,
     'Weekend': [1.0,  1.0,  1.0,  1.0]  + [None] * 16,
 })
 
-# NF.xlsx – sheet 'NF'
+# Scaling/Horizon setup (formerly NF.xlsx – sheet 'NF')
 df = pd.DataFrame({
     'Day': list(range(1, 15)),
 })
 
-# NF.xlsx – sheet 'Shift'
+# Shift setup (formerly NF.xlsx – sheet 'Shift')
 df1 = pd.DataFrame({
     'Shift': [1, 2, 3],
     'Hours': [8, 8, 8],
