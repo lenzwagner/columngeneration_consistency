@@ -72,7 +72,7 @@ def run_threshold_analysis():
             try:
                 res_nc = column_generation_behavior(
                     data, scaled_demand_dict, eps, Min_WD_i, Max_WD_i, 10, 2000, 
-                    100, chi, 6e-5, 7200, I, T, K, 1.0, 
+                    100, chi, 6e-5, 300, I, T, K, 1.0, 
                     sp_solver='labeling_bidir', use_null_column=True,
                     enforce_no_change=True, enforce_performance_floor=None
                 )
@@ -86,7 +86,7 @@ def run_threshold_analysis():
             try:
                 res_unr = column_generation_behavior(
                     data, scaled_demand_dict, eps, Min_WD_i, Max_WD_i, 10, 2000, 
-                    100, chi, 6e-5, 7200, I, T, K, 1.0, 
+                    100, chi, 6e-5, 300, I, T, K, 1.0, 
                     sp_solver='labeling_bidir', use_null_column=True,
                     enforce_no_change=False, enforce_performance_floor=None
                 )
@@ -138,7 +138,7 @@ def run_threshold_analysis():
                 try:
                     res_lf = column_generation_behavior(
                         data, scaled_demand_dict, eps, Min_WD_i, Max_WD_i, 10, 2000, 
-                        100, chi, 6e-5, 7200, I, T, K, 1.0, 
+                        100, chi, 6e-5, 300, I, T, K, 1.0, 
                         sp_solver='labeling_bidir', use_null_column=True,
                         enforce_no_change=False, enforce_performance_floor=tau
                     )
