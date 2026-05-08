@@ -29,9 +29,9 @@ def run_threshold_analysis():
     })
     
     # Grid of lambda and tau values
-    lambdas = np.arange(0.5, 2.05, 0.05).tolist()
-    taus = [0.70, 0.75, 0.80, 0.85, 0.90]
-    seeds = range(1, 26)  # Use all 25 scenarios
+    lambdas = np.arange(0.1, 2.1, 0.1).tolist()
+    taus = np.arange(0.5, 1.1, 0.1).tolist()
+    seeds = range(1, 26)
     
     results = []
     
@@ -72,8 +72,8 @@ def run_threshold_analysis():
             try:
                 res_nc = column_generation_behavior(
                     data, scaled_demand_dict, eps, Min_WD_i, Max_WD_i, 10, 2000, 
-                    100, chi, 6e-5, 300, I, T, K, 1.0, 
-                    sp_solver='labeling_bidir', use_null_column=True,
+                    100, chi, 6e-5, 600, I, T, K, 1.0,
+                    sp_solver='labeling_bidir', use_null_column=False,
                     enforce_no_change=True, enforce_performance_floor=None
                 )
                 uc_nc = res_nc[0]
@@ -86,8 +86,8 @@ def run_threshold_analysis():
             try:
                 res_unr = column_generation_behavior(
                     data, scaled_demand_dict, eps, Min_WD_i, Max_WD_i, 10, 2000, 
-                    100, chi, 6e-5, 300, I, T, K, 1.0, 
-                    sp_solver='labeling_bidir', use_null_column=True,
+                    100, chi, 6e-5, 600, I, T, K, 1.0,
+                    sp_solver='labeling_bidir', use_null_column=False,
                     enforce_no_change=False, enforce_performance_floor=None
                 )
                 uc_unr = res_unr[0]
@@ -138,8 +138,8 @@ def run_threshold_analysis():
                 try:
                     res_lf = column_generation_behavior(
                         data, scaled_demand_dict, eps, Min_WD_i, Max_WD_i, 10, 2000, 
-                        100, chi, 6e-5, 300, I, T, K, 1.0, 
-                        sp_solver='labeling_bidir', use_null_column=True,
+                        100, chi, 6e-5, 600, I, T, K, 1.0,
+                        sp_solver='labeling_bidir', use_null_column=False,
                         enforce_no_change=False, enforce_performance_floor=tau
                     )
                     uc_lf = res_lf[0]
@@ -150,20 +150,27 @@ def run_threshold_analysis():
                     lam_tau_results[tau]['Low-Fatigue_Feasible'].append(False)
                     lam_tau_results[tau]['Low-Fatigue_Undercoverage'].append(np.nan)
                 
-        # Average over all 25 seeds for each tau at this lambda
+        # Average and Standard Deviation over all 25 seeds for each tau at this lambda
         for tau in taus:
             avg_res = {
                 'lambda': lam,
                 'tau': tau,
                 'No-Change_Feasible_%': np.nanmean(lam_tau_results[tau]['No-Change_Feasible']) * 100,
                 'No-Change_Undercoverage': np.nanmean(lam_tau_results[tau]['No-Change_Undercoverage']),
+                'No-Change_Undercoverage_std': np.nanstd(lam_tau_results[tau]['No-Change_Undercoverage']),
                 'Low-Fatigue_Feasible_%': np.nanmean(lam_tau_results[tau]['Low-Fatigue_Feasible']) * 100,
                 'Low-Fatigue_Undercoverage': np.nanmean(lam_tau_results[tau]['Low-Fatigue_Undercoverage']),
+                'Low-Fatigue_Undercoverage_std': np.nanstd(lam_tau_results[tau]['Low-Fatigue_Undercoverage']),
                 'Unrestricted_Undercoverage': np.nanmean(lam_tau_results[tau]['Unrestricted_Undercoverage']),
+                'Unrestricted_Undercoverage_std': np.nanstd(lam_tau_results[tau]['Unrestricted_Undercoverage']),
                 'Unrestricted_SC': np.nanmean(lam_tau_results[tau]['Unrestricted_SC']),
+                'Unrestricted_SC_std': np.nanstd(lam_tau_results[tau]['Unrestricted_SC']),
                 'P_end': np.nanmean(lam_tau_results[tau]['P_end']),
+                'P_end_std': np.nanstd(lam_tau_results[tau]['P_end']),
                 'B_end': np.nanmean(lam_tau_results[tau]['B_end']),
-                'L_tail_k7': np.nanmean(lam_tau_results[tau]['L_tail_k7'])
+                'B_end_std': np.nanstd(lam_tau_results[tau]['B_end']),
+                'L_tail_k7': np.nanmean(lam_tau_results[tau]['L_tail_k7']),
+                'L_tail_k7_std': np.nanstd(lam_tau_results[tau]['L_tail_k7'])
             }
             results.append(avg_res)
             

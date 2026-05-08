@@ -224,6 +224,7 @@ class MasterProblem:
             self.model.Params.BarConvTol = 0.0
             self.model.Params.MIPGap = 0.05
             self.model.Params.OutputFlag = 1
+            self.model.Params.TimeLimit = timeLimit
             
             # Set lambda variables to integer (per-group indexing)
             for g in self.group_info:
