@@ -1,10 +1,10 @@
 """
 Heterogeneity Analysis Loop
 
-4 Main Analyses:
-1. Baseline Comparison: Homogeneous vs. Heterogeneous
-2. Worker-Type Specific Impact: Performance/Shift Changes per Type
-3. Fairness Analysis: Gini Coefficient
+4 Hauptanalysen:
+1. Baseline Comparison: Homogen vs. Heterogen
+2. Worker-Type Specific Impact: Performance/Shift Changes per Typ
+3. Fairness Analysis: Gini-Koeffizient
 4. Sensitivity Analysis: Variation of Heterogeneity Levels
 """
 
@@ -16,8 +16,8 @@ from Utils.aggundercover import *
 from datetime import *
 from Utils.demand import *
 from worker_groups import create_groups_from_fractions, create_homogeneous_group
-from Utils.metrics import calculate_gini, calculate_cv, calculate_90_10_ratio, calculate_group_metrics
 import time
+from scipy import stats
 import numpy as np
 
 # ============================================================================
@@ -25,16 +25,16 @@ import numpy as np
 # ============================================================================
 
 SCENARIOS = {
-    # Analysis 1 & 2: Baseline vs Heterogeneous
-    'homogeneous': {
-        'name': 'Homogeneous (Baseline)',
+    # Analyse 1 & 2: Baseline vs Heterogen
+    'homogen': {
+        'name': 'Homogen (Baseline)',
         'team': 'homogeneous',
         'fractions': None,
         'group_params': [(0.06, 3)],
         'n_workers': 100,
     },
-    'heterogeneous_3cluster': {
-        'name': 'Heterogeneous (3 Cluster)',
+    'heterogen_3cluster': {
+        'name': 'Heterogen (3 Cluster)',
         'description': '33% Resilient, 34% Average, 33% Sensitive',
         'team': 'mixed',
         'fractions': "1/3,1/3,1/3",  # 33%, 34%, 33%
@@ -103,7 +103,97 @@ N_SEEDS = 25
 # Which analysis to run
 RUN_ANALYSIS = 'all'  # 'baseline', 'sensitivity', or 'all'
 
-# Metrics are now imported from Utils.metrics
+# ============================================================================
+# METRIC FUNCTIONS
+# ============================================================================
+
+def calculate_gini(values):
+    """Calculate Gini coefficient (0 = equal, 1 = unequal)."""
+    values = np.array(values)
+    if len(values) == 0 or values.sum() == 0:
+        return 0.0
+    sorted_values = np.sort(values)
+    n = len(values)
+    cumulative = np.cumsum(sorted_values)
+    return (2 * np.sum((np.arange(1, n+1) * sorted_values)) - (n + 1) * cumulative[-1]) / (n * cumulative[-1])
+
+
+def calculate_90_10_ratio(values):
+    """Calculate ratio of 90th to 10th percentile."""
+    values = np.array(values)
+    if len(values) == 0:
+        return 0.0
+    p90 = np.percentile(values, 90)
+    p10 = np.percentile(values, 10)
+    return p90 / p10 if p10 > 0 else float('inf')
+
+
+def calculate_cv(values):
+    """Calculate coefficient of variation (std/mean)."""
+    values = np.array(values)
+    if len(values) == 0 or np.mean(values) == 0:
+        return 0.0
+    return np.std(values) / np.mean(values)
+
+
+def calculate_group_metrics(ls_sc, ls_perf, worker_groups, n_days, n_shifts=3):
+    """Calculate detailed metrics per worker group."""
+    group_metrics = {}
+    all_perf_losses = []
+    all_shift_changes = []
+    
+    for group_name, group in worker_groups.items():
+        group_sc = []
+        group_perf_loss = []
+        
+        for worker_id in group.worker_ids:
+            w_idx = worker_id - 1
+            
+            # Shift changes (indexed by worker * n_days)
+            sc_start = w_idx * n_days
+            sc_end = sc_start + n_days
+            if sc_end <= len(ls_sc):
+                worker_sc = sum(ls_sc[sc_start:sc_end])
+                group_sc.append(worker_sc)
+                all_shift_changes.append(worker_sc)
+            
+            # Performance loss (indexed by worker * n_days * n_shifts)
+            perf_start = w_idx * n_days * n_shifts
+            perf_end = perf_start + n_days * n_shifts
+            if perf_end <= len(ls_perf):
+                # Performance loss = sum of (1 - perf) for working shifts
+                worker_perf = ls_perf[perf_start:perf_end]
+                perf_loss = sum(1 - p for p in worker_perf if p > 0)
+                group_perf_loss.append(perf_loss)
+                all_perf_losses.append(perf_loss)
+        
+        group_metrics[group_name] = {
+            'epsilon': group.epsilon,
+            'chi': group.chi,
+            'n_workers': len(group.worker_ids),
+            'total_shift_changes': sum(group_sc),
+            'avg_shift_changes': np.mean(group_sc) if group_sc else 0,
+            'std_shift_changes': np.std(group_sc) if group_sc else 0,
+            'min_shift_changes': min(group_sc) if group_sc else 0,
+            'max_shift_changes': max(group_sc) if group_sc else 0,
+            'total_perf_loss': sum(group_perf_loss),
+            'avg_perf_loss': np.mean(group_perf_loss) if group_perf_loss else 0,
+            'std_perf_loss': np.std(group_perf_loss) if group_perf_loss else 0,
+            'min_perf_loss': min(group_perf_loss) if group_perf_loss else 0,
+            'max_perf_loss': max(group_perf_loss) if group_perf_loss else 0,
+        }
+    
+    # Fairness metrics (across all workers)
+    fairness_metrics = {
+        'gini_perf_loss': calculate_gini(all_perf_losses),
+        'gini_shift_changes': calculate_gini(all_shift_changes),
+        'cv_perf_loss': calculate_cv(all_perf_losses),
+        'cv_shift_changes': calculate_cv(all_shift_changes),
+        'ratio_90_10_perf': calculate_90_10_ratio(all_perf_losses),
+        'ratio_90_10_sc': calculate_90_10_ratio(all_shift_changes),
+    }
+    
+    return group_metrics, fairness_metrics
 
 
 def run_single_scenario(scenario_key, scenario_config, seeds=range(1, 26), run_naive=True):
@@ -323,13 +413,13 @@ def print_analysis_tables(all_results):
     print("="*80)
     
     # ===== Table 1: Baseline Comparison =====
-    if 'homogeneous' in all_results and 'heterogeneous_3cluster' in all_results:
+    if 'homogen' in all_results and 'heterogen_3cluster' in all_results:
         print("\n" + "-"*60)
         print("Table X: Comparison of homogeneous vs. heterogeneous workforce")
         print("-"*60)
         
-        homo_bsv = [r for r in all_results['homogeneous'] if r['model'] == 'BSV']
-        hetero_bsv = [r for r in all_results['heterogeneous_3cluster'] if r['model'] == 'BSV']
+        homo_bsv = [r for r in all_results['homogen'] if r['model'] == 'BSV']
+        hetero_bsv = [r for r in all_results['heterogen_3cluster'] if r['model'] == 'BSV']
         
         if homo_bsv and hetero_bsv:
             metrics = [
@@ -350,12 +440,12 @@ def print_analysis_tables(all_results):
                 print(f"{label:<22} {homo_val:>12.2f} {hetero_val:>14.2f} {delta:>+10.1f}%")
     
     # ===== Table 2: Worker-Type Impact =====
-    if 'heterogeneous_3cluster' in all_results:
+    if 'heterogen_3cluster' in all_results:
         print("\n" + "-"*60)
         print("Table Y: Performance and shift changes by worker type")
         print("-"*60)
         
-        hetero_bsv = [r for r in all_results['heterogeneous_3cluster'] if r['model'] == 'BSV']
+        hetero_bsv = [r for r in all_results['heterogen_3cluster'] if r['model'] == 'BSV']
         
         if hetero_bsv:
             # Get group names from first result
@@ -433,10 +523,10 @@ def save_summary_csv(all_results):
             'std': round(np.std(values), 3)
         })
 
-    # 1. Baseline vs Heterogeneous (Homogeneous vs Heterogeneous 3-Cluster)
-    if 'homogeneous' in all_results and 'heterogeneous_3cluster' in all_results:
-        homo_bsv = [r for r in all_results['homogeneous'] if r['model'] == 'BSV']
-        hetero_bsv = [r for r in all_results['heterogeneous_3cluster'] if r['model'] == 'BSV']
+    # 1. Baseline vs Heterogeneous (Homogen vs Heterogen 3-Cluster)
+    if 'homogen' in all_results and 'heterogen_3cluster' in all_results:
+        homo_bsv = [r for r in all_results['homogen'] if r['model'] == 'BSV']
+        hetero_bsv = [r for r in all_results['heterogen_3cluster'] if r['model'] == 'BSV']
         
         if homo_bsv and hetero_bsv:
             # Undercoverage
@@ -614,7 +704,7 @@ if __name__ == "__main__":
         print("# ANALYSIS 1-3: BASELINE COMPARISON, WORKER-TYPE IMPACT, FAIRNESS")
         print("#"*80)
         
-        for scenario_key in ['homogeneous', 'heterogeneous_3cluster']:
+        for scenario_key in ['homogen', 'heterogen_3cluster']:
             results = run_single_scenario(
                 scenario_key, SCENARIOS[scenario_key], 
                 seeds=range(1, N_SEEDS + 1), run_naive=True
