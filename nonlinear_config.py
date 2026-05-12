@@ -5,6 +5,7 @@ experiment_config = {
     "model_specs": [
         {"family": "linear", "name": "LINEAR_BASE"},
         {"family": "nonlinear", "name": "NL_CONVEX"},
+        {"family": "nonlinear", "name": "NL_STATE_DEP"}
     ],
     "solver": {
         "time_limit": 7200,
@@ -70,6 +71,22 @@ nonlinear_specs = {
             "mild": 1.0,
             "severe": 2.0,
             "return": 0.5,
+        }
+    },
+    "NL_STATE_DEP": {
+        "name": "NL_STATE_DEP",
+        "fatigue_levels": 100,
+        "stability_levels": 14,
+        "chg_mode": "matrix",
+        "rec_mode": "state_dependent",
+        "perf_mode": "linear",
+        "alpha": 0.3,
+        "beta": 0.8,
+        "delta_matrix": {
+            # 1: Early, 2: Late, 3: Night
+            1: {1: 0.00, 2: 0.06, 3: 0.13},
+            2: {1: 0.11, 2: 0.00, 3: 0.08},
+            3: {1: 0.20, 2: 0.10, 3: 0.00}
         }
     }
 }

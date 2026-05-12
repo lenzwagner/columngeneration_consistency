@@ -111,6 +111,8 @@ def forward_pass_numba(
     # Forbidden pairs: (3,1), (3,2), (2,1)
     forbidden = np.array([[3, 1], [3, 2], [2, 1]], dtype=np.int32)
     
+    n_tau = (n_shifts + 1) * (n_shifts + 1)
+    
     for d in range(stop_day):
         next_day = d + 1
         n_next = 0
@@ -136,8 +138,8 @@ def forward_pass_numba(
             if can_off and n_next < MAX_STATES:
                 tau = 0
                 new_omega = -1 if omega > 0 else (omega - 1 if omega < 0 else -1)
-                new_rho = GammaH_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
-                new_e = GammaF_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
+                new_rho = GammaH_flat[e * (H_max + 1) * n_tau + rho * n_tau + tau]
+                new_e = GammaF_flat[e * (H_max + 1) * n_tau + rho * n_tau + tau]
                 
                 if enforce_performance_floor > 0.0:
                     p_new_off = pi_k[new_e]
@@ -168,13 +170,13 @@ def forward_pass_numba(
                 if is_forbidden:
                     continue
                 
-                tau = 4 if last_worked == 0 else (1 if last_worked == shift else (2 if last_worked < shift else 3))
-                if enforce_no_change == 1 and (tau == 2 or tau == 3):
+                tau = last_worked * (n_shifts + 1) + shift
+                if enforce_no_change == 1 and last_worked > 0 and last_worked != shift:
                     continue
                     
                 new_omega = 1 if omega <= 0 else omega + 1
-                new_rho = GammaH_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
-                new_e = GammaF_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
+                new_rho = GammaH_flat[e * (H_max + 1) * n_tau + rho * n_tau + tau]
+                new_e = GammaF_flat[e * (H_max + 1) * n_tau + rho * n_tau + tau]
                 
                 p_new = pi_k[new_e]
                 if enforce_performance_floor > 0.0 and p_new < enforce_performance_floor:
@@ -293,6 +295,7 @@ def forward_pass_from_states(
         curr_init_idx[i] = i
     
     forbidden = np.array([[3, 1], [3, 2], [2, 1]], dtype=np.int32)
+    n_tau = (n_shifts + 1) * (n_shifts + 1)
     
     # Continue forward from start_day to n_days
     for d in range(start_day, n_days):
@@ -317,8 +320,8 @@ def forward_pass_from_states(
             if can_off and n_next < MAX_STATES:
                 tau = 0
                 new_omega = -1 if omega > 0 else (omega - 1 if omega < 0 else -1)
-                new_rho = GammaH_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
-                new_e = GammaF_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
+                new_rho = GammaH_flat[e * (H_max + 1) * n_tau + rho * n_tau + tau]
+                new_e = GammaF_flat[e * (H_max + 1) * n_tau + rho * n_tau + tau]
                 
                 if enforce_performance_floor > 0.0:
                     p_new_off = pi_k[new_e]
@@ -349,13 +352,13 @@ def forward_pass_from_states(
                 if is_forbidden:
                     continue
                 
-                tau = 4 if last_worked == 0 else (1 if last_worked == shift else (2 if last_worked < shift else 3))
-                if enforce_no_change == 1 and (tau == 2 or tau == 3):
+                tau = last_worked * (n_shifts + 1) + shift
+                if enforce_no_change == 1 and last_worked > 0 and last_worked != shift:
                     continue
                     
                 new_omega = 1 if omega <= 0 else omega + 1
-                new_rho = GammaH_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
-                new_e = GammaF_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
+                new_rho = GammaH_flat[e * (H_max + 1) * n_tau + rho * n_tau + tau]
+                new_e = GammaF_flat[e * (H_max + 1) * n_tau + rho * n_tau + tau]
                 
                 p_new = pi_k[new_e]
                 if enforce_performance_floor > 0.0 and p_new < enforce_performance_floor:
