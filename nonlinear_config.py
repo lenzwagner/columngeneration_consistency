@@ -76,12 +76,14 @@ nonlinear_specs = {
     "NL_STATE_DEP": {
         "name": "NL_STATE_DEP",
         "fatigue_levels": 100,
-        "stability_levels": 14,
+        "stability_levels": 28,
         "chg_mode": "matrix",
         "rec_mode": "state_dependent",
         "perf_mode": "linear",
-        "alpha": 0.3,
-        "beta": 0.8,
+        "alpha_R": 0.04,
+        "gamma_R": 0.5,
+        "gamma_C": 1.25,
+        "e_max": 0.50,
         "delta_matrix": {
             # 1: Early, 2: Late, 3: Night
             1: {1: 0.00, 2: 0.06, 3: 0.13},

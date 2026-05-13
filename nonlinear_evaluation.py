@@ -1,23 +1,19 @@
 import pandas as pd
 import numpy as np
 
-def R_cumulative(rho, alpha, beta, chi):
-    """Cumulative recovery after rho stable days."""
-    if rho <= chi:
-        return 0.0
-    # The prompt states R(rho) = alpha(1 - beta^rho).
-    # But usually recovery starts after chi days.
-    # So it should be R(rho) = alpha(1 - beta^(rho - chi))
-    # Let's use (rho - chi) to make the exponent start at 1 when rho = chi + 1
-    return alpha * (1.0 - beta ** (rho - chi))
-
-def r_daily(rho, alpha, beta, chi):
+def r_shaped(rho, alpha_R, gamma_R, chi):
     """Daily recovery increment."""
-    if rho <= chi:
-        return 0.0
-    return R_cumulative(rho, alpha, beta, chi) - R_cumulative(rho - 1, alpha, beta, chi)
+    if rho >= chi + 1:
+        return alpha_R * ((rho - chi)**gamma_R - (rho - chi - 1)**gamma_R)
+    return 0.0
 
-def evaluate_worker_schedule(schedule, delta_matrix, alpha, beta, chi=3, e_max=1.0):
+def h_shaped(nu, gamma_C):
+    """Change multiplier increment."""
+    if nu >= 1:
+        return nu**gamma_C - (nu - 1)**gamma_C
+    return 0.0
+
+def evaluate_worker_schedule(schedule, delta_matrix, alpha_R, gamma_R, gamma_C, chi=3, e_max=1.0):
     """
     Evaluate a single worker's schedule.
     schedule: list of shifts [None, 1, 1, 2, ...] where None or 0 means Off.
@@ -27,6 +23,7 @@ def evaluate_worker_schedule(schedule, delta_matrix, alpha, beta, chi=3, e_max=1
     
     e = 0.0
     rho = 0
+    nu = 0
     last_worked_shift = None
     
     for day, shift in enumerate(schedule, 1):
@@ -45,13 +42,15 @@ def evaluate_worker_schedule(schedule, delta_matrix, alpha, beta, chi=3, e_max=1
                 # Shift change!
                 shift_change = True
                 rho = 0
+                nu += 1
                 delta = delta_matrix.get(last_worked_shift, {}).get(shift, 0.0)
-                e = min(e_max, e + delta)
+                e = min(e_max, e + delta * h_shaped(nu, gamma_C))
                 transition_type = "Change"
             else:
                 # No shift change
                 rho += 1
-                recovery = r_daily(rho, alpha, beta, chi)
+                nu = 0
+                recovery = r_shaped(rho, alpha_R, gamma_R, chi)
                 e = max(0.0, e - recovery)
                 transition_type = "Same"
                 
@@ -60,7 +59,8 @@ def evaluate_worker_schedule(schedule, delta_matrix, alpha, beta, chi=3, e_max=1
         else:
             # Day off
             rho += 1
-            recovery = r_daily(rho, alpha, beta, chi)
+            nu = 0
+            recovery = r_shaped(rho, alpha_R, gamma_R, chi)
             e = max(0.0, e - recovery)
             transition_type = "Off"
             performance = 0.0 # x=0
@@ -70,6 +70,7 @@ def evaluate_worker_schedule(schedule, delta_matrix, alpha, beta, chi=3, e_max=1
             'shift': shift if shift is not None else 0,
             'previous_shift': last_worked_shift if transition_type == "Change" else (last_worked_shift if shift is not None else 0),
             'rho': rho,
+            'nu': nu,
             'e_before': e_before,
             'delta': delta,
             'recovery': recovery,
@@ -84,20 +85,13 @@ def evaluate_worker_schedule(schedule, delta_matrix, alpha, beta, chi=3, e_max=1
 def evaluate_nonlinear_schedule(x_dict, nl_spec, T, I, K):
     """
     Evaluate a full schedule (x_dict).
-    x_dict: {(day, shift): [binary values for each worker, or dict keyed by worker]}
-    For our output format, x_dict is usually {(day, shift): [w1, w2, ...]}
-    But we need it by worker.
     """
-    # Assuming x_dict is {(day, shift): sum(x)} or {(i, day, shift): value}
-    # We will accept {(i, day, shift): 1 or 0}
-    
     delta_matrix = nl_spec.get('delta_matrix', {})
-    alpha = nl_spec.get('alpha', 1.0)
-    beta = nl_spec.get('beta', 1.0)
-    chi = nl_spec.get('stability_levels', 14) # Default to something, or 3
-    # usually chi is 3 in this setup
+    alpha_R = nl_spec.get('alpha_R', 0.04)
+    gamma_R = nl_spec.get('gamma_R', 0.5)
+    gamma_C = nl_spec.get('gamma_C', 1.25)
+    e_max = nl_spec.get('e_max', 0.50)
     chi = 3
-    e_max = 1.0
     
     all_states = []
     
@@ -112,7 +106,7 @@ def evaluate_nonlinear_schedule(x_dict, nl_spec, T, I, K):
                     break
             schedule[t_idx] = worked_shift
             
-        states = evaluate_worker_schedule(schedule, delta_matrix, alpha, beta, chi, e_max)
+        states = evaluate_worker_schedule(schedule, delta_matrix, alpha_R, gamma_R, gamma_C, chi, e_max)
         for s in states:
             s['worker_id'] = i
             all_states.append(s)
@@ -133,13 +127,15 @@ def check_1_handtest():
         3: {1: 0.20, 2: 0.10, 3: 0.00}
     }
     
-    alpha = 0.3
-    beta = 0.8
+    alpha_R = 0.04
+    gamma_R = 0.5
+    gamma_C = 1.25
+    e_max = 0.50
     chi = 3
     
-    states = evaluate_worker_schedule(schedule, delta_matrix, alpha, beta, chi)
+    states = evaluate_worker_schedule(schedule, delta_matrix, alpha_R, gamma_R, gamma_C, chi, e_max)
     df = pd.DataFrame(states)
-    print(df[['day', 'shift', 'transition_type', 'rho', 'delta', 'recovery', 'e_after']])
-    
+    print(df[['day', 'shift', 'transition_type', 'rho', 'nu', 'delta', 'recovery', 'e_after']])
+
 if __name__ == "__main__":
     check_1_handtest()

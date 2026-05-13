@@ -52,12 +52,6 @@ delta_matrices = {
 
 betas = {"fast": 0.3, "medium": 0.6, "slow": 0.85}
 
-def get_alpha(beta, delta_matrix):
-    # avg non-zero cost
-    vals = [v for inner in delta_matrix.values() for k, v in inner.items() if k != inner]
-    avg_delta = np.mean(vals)
-    return avg_delta / (1.0 - beta**4)
-
 def run_study():
     os.makedirs('results/nonlinear', exist_ok=True)
     
@@ -74,27 +68,48 @@ def run_study():
         'K': K + [np.nan] * (max(len(I), len(T), len(K)) - len(K))
     })
     
-    # We will do just D2 and medium for the main analysis, and loop over D0,D1,D2/betas for sensitivity
-    # Let's define the configs we want to run per scenario.
-    configs_to_run = []
+    configs_to_run = [
+        # (d_id, config_name, d_mat, alpha_R, gamma_R, gamma_C, e_max)
+        # Main Analysis (Concave recovery, Convex change)
+        ("D2", "base_nonlinear", delta_matrices["D2"], 0.04, 0.5, 1.25, 0.50),
+        
+        # Form-Kombinationen (Shape Variations)
+        ("D2", "pure_concave", delta_matrices["D2"], 0.04, 0.5, 0.8, 0.50),   
+        ("D2", "pure_convex", delta_matrices["D2"], 0.04, 1.25, 1.25, 0.50),  
+        ("D2", "pure_linear", delta_matrices["D2"], 0.04, 1.0, 1.0, 0.50),    
+        ("D2", "convex_rec_concave_chg", delta_matrices["D2"], 0.04, 1.25, 0.8, 0.50), 
+        ("D2", "concave_rec_convex_chg", delta_matrices["D2"], 0.04, 0.5, 1.25, 0.50), 
+        
+        # Intensitäts-Variationen (alpha_R)
+        ("D2", "slow_recovery", delta_matrices["D2"], 0.02, 0.5, 1.25, 0.50),
+        ("D2", "fast_recovery", delta_matrices["D2"], 0.08, 0.5, 1.25, 0.50),
+        ("D2", "v_fast_recovery", delta_matrices["D2"], 0.12, 0.5, 1.25, 0.50),
+        
+        # Krümmungs-Variationen (gamma_R)
+        ("D2", "extreme_concave_rec", delta_matrices["D2"], 0.04, 0.2, 1.25, 0.50),
+        ("D2", "strong_convex_rec", delta_matrices["D2"], 0.04, 1.5, 1.25, 0.50),
+        
+        # Krümmungs-Variationen (gamma_C)
+        ("D2", "extreme_concave_chg", delta_matrices["D2"], 0.04, 0.5, 0.5, 0.50),
+        ("D2", "strong_convex_chg", delta_matrices["D2"], 0.04, 0.5, 1.75, 0.50),
+        ("D2", "extreme_convex_chg", delta_matrices["D2"], 0.04, 0.5, 2.25, 0.50),
+
+        # Kapazitäts-Variationen (e_max)
+        ("D2", "low_fatigue_cap", delta_matrices["D2"], 0.04, 0.5, 1.25, 0.30),
+        ("D2", "high_fatigue_cap", delta_matrices["D2"], 0.04, 0.5, 1.25, 0.80),
+
+        # Matrix/Asymmetrie Variationen
+        ("D0", "symmetric", delta_matrices["D0"], 0.04, 0.5, 1.25, 0.50),
+        ("D1", "mild_asymmetric", delta_matrices["D1"], 0.04, 0.5, 1.25, 0.50),
+    ]
     
-    # Core Main Analysis (D2, beta=0.85)
-    configs_to_run.append(("D2", "slow", delta_matrices["D2"], betas["slow"]))
-    
-    # Sensitivities
-    configs_to_run.append(("D0", "slow", delta_matrices["D0"], betas["slow"]))
-    configs_to_run.append(("D1", "slow", delta_matrices["D1"], betas["slow"]))
-    
-    configs_to_run.append(("D2", "fast", delta_matrices["D2"], betas["fast"]))
-    configs_to_run.append(("D2", "medium", delta_matrices["D2"], betas["medium"]))
-    
-    for d_id, b_id, d_mat, beta_val in configs_to_run:
-        alpha_val = get_alpha(beta_val, d_mat)
+    for d_id, b_id, d_mat, alpha_R, gamma_R, gamma_C, e_max in configs_to_run:
         parameter_grid.append({
             "delta_matrix_id": d_id,
-            "beta": beta_val,
-            "alpha": alpha_val,
-            "e_max": 1.0,
+            "alpha_R": alpha_R,
+            "gamma_R": gamma_R,
+            "gamma_C": gamma_C,
+            "e_max": e_max,
             "rho_max": "inf",
             "grid_step": 0.01
         })
@@ -110,9 +125,7 @@ def run_study():
     
     pd.DataFrame(parameter_grid).to_csv('results/nonlinear/parameter_grid.csv', index=False)
     
-    # For speed, let's limit to 1 scenario if needed, but user said "all 25 scenarios"
-    # To start we will do scenario 0. You can change this to `scenarios` loop later.
-    for scenario_id in [0]: 
+    for scenario_id in scenarios: 
         print(f"Scenario {scenario_id}")
         try:
             base_demand_dict = generate_dict_from_excel(
@@ -124,17 +137,18 @@ def run_study():
             print(f"Failed to pull base demand for seed {scenario_id}: {e}")
             continue
             
-        for d_id, b_id, d_mat, beta_val in configs_to_run:
-            alpha_val = get_alpha(beta_val, d_mat)
+        for d_id, b_id, d_mat, alpha_R, gamma_R, gamma_C, e_max in configs_to_run:
             nl_spec = {
                 "name": "NL_STATE_DEP",
                 "fatigue_levels": 100,
-                "stability_levels": 14,
+                "stability_levels": 28,
                 "chg_mode": "matrix",
                 "rec_mode": "state_dependent",
                 "perf_mode": "linear",
-                "alpha": alpha_val,
-                "beta": beta_val,
+                "alpha_R": alpha_R,
+                "gamma_R": gamma_R,
+                "gamma_C": gamma_C,
+                "e_max": e_max,
                 "delta_matrix": d_mat
             }
             
@@ -142,13 +156,15 @@ def run_study():
             print(f"  [{d_id}-{b_id}] Variant A: NPP")
             nl_spec_npp = {
                 "name": "NL_STATE_DEP",
-                "fatigue_levels": 1,
-                "stability_levels": 14,
+                "fatigue_levels": 100,
+                "stability_levels": 28,
                 "chg_mode": "matrix",
                 "rec_mode": "state_dependent",
                 "perf_mode": "linear",
-                "alpha": 0.0,
-                "beta": 1.0,
+                "alpha_R": 0.0,
+                "gamma_R": 1.0,
+                "gamma_C": 1.0,
+                "e_max": 0.0,
                 "delta_matrix": {1: {1:0,2:0,3:0}, 2: {1:0,2:0,3:0}, 3: {1:0,2:0,3:0}}
             }
             t0 = time.time()
@@ -300,8 +316,9 @@ def run_study():
                     "scenario_id": scenario_id,
                     "model_variant": var_name,
                     "delta_matrix_id": d_id,
-                    "beta": beta_val,
-                    "alpha": alpha_val,
+                    "alpha_R": alpha_R,
+                    "gamma_R": gamma_R,
+                    "gamma_C": gamma_C,
                     "e_max": 1.0,
                     "objective_value": cg_res[8],
                     "total_undercoverage": u_tot,
