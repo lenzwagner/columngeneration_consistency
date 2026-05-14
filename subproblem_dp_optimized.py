@@ -15,7 +15,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 import gurobipy as gu
-from nonlinear_transitions import generate_transitions, classify_transition
+
 
 try:
     from numba import njit, prange
@@ -37,29 +37,27 @@ except ImportError:
 
 
 @njit(cache=True)
-def pack_state(omega: int, rho: int, nu: int, e: int, last_worked: int, s_last: int, 
+def pack_state(omega: int, rho: int, e: int, last_worked: int, s_last: int, 
                first_flag: int) -> np.int64:
     """Pack state variables into single int64."""
     return np.int64(((omega + 10) & 0x1F) |
                     ((rho & 0x1F) << 5) |
-                    ((nu & 0x1F) << 10) |
-                    ((e & 0x7F) << 15) |
-                    ((last_worked & 0x7) << 22) |
-                    ((s_last & 0x7) << 25) |
-                    ((first_flag & 0x1) << 28))
+                    ((e & 0x7F) << 10) |
+                    ((last_worked & 0x7) << 17) |
+                    ((s_last & 0x7) << 20) |
+                    ((first_flag & 0x1) << 23))
 
 
 @njit(cache=True)
-def unpack_state(state: np.int64) -> Tuple[int, int, int, int, int, int, int]:
+def unpack_state(state: np.int64) -> Tuple[int, int, int, int, int, int]:
     """Unpack state from int64."""
     omega = (state & 0x1F) - 10
     rho = (state >> 5) & 0x1F
-    nu = (state >> 10) & 0x1F
-    e = (state >> 15) & 0x7F
-    last_worked = (state >> 22) & 0x7
-    s_last = (state >> 25) & 0x7
-    first_flag = (state >> 28) & 0x1
-    return omega, rho, nu, e, last_worked, s_last, first_flag
+    e = (state >> 10) & 0x7F
+    last_worked = (state >> 17) & 0x7
+    s_last = (state >> 20) & 0x7
+    first_flag = (state >> 23) & 0x1
+    return omega, rho, e, last_worked, s_last, first_flag
 
 
 @njit(cache=True)
@@ -78,22 +76,10 @@ def forward_pass_numba(
     suffix_bounds: np.ndarray,
     stop_day: int,
     enforce_no_change: int,
-    enforce_performance_floor: float,
-    GammaF_flat: np.ndarray,
-    GammaH_flat: np.ndarray,
-    GammaNu_flat: np.ndarray,
-    pi_k: np.ndarray,
-    H_max: int,
-    Nu_max: int
+    enforce_performance_floor: float
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
     """
-    Forward DP pass from day 0 to stop_day.
-    
-    Returns:
-        states: Packed state array
-        costs: Cost array
-        paths: Path decisions array (n_states, stop_day)
-        n_states: Number of states
+    Forward DP pass from day 0 to stop_day (Linear version).
     """
     MAX_STATES = 200000
     
@@ -106,7 +92,7 @@ def forward_pass_numba(
     next_paths = np.zeros((MAX_STATES, n_days + 1), dtype=np.int8)
     
     # Initial state
-    curr_states[0] = pack_state(0, 0, 0, 0, 0, 0, 0)
+    curr_states[0] = pack_state(0, 0, 0, 0, 0, 0)
     curr_costs[0] = -duals_i
     n_curr = 1
     
@@ -114,8 +100,6 @@ def forward_pass_numba(
     
     # Forbidden pairs: (3,1), (3,2), (2,1)
     forbidden = np.array([[3, 1], [3, 2], [2, 1]], dtype=np.int32)
-    
-    n_tau = (n_shifts + 1) * (n_shifts + 1)
     
     for d in range(stop_day):
         next_day = d + 1
@@ -130,7 +114,7 @@ def forward_pass_numba(
             if cost - suffix_bounds[next_day - 1] >= best_cost - 1e-9:
                 continue
             
-            omega, rho, nu, e, last_worked, s_last, first_flag = unpack_state(state)
+            omega, rho, e, last_worked, s_last, first_flag = unpack_state(state)
             has_worked = last_worked > 0
             
             # Option 1: Day off
@@ -140,19 +124,18 @@ def forward_pass_numba(
                     can_off = False
             
             if can_off and n_next < MAX_STATES:
-                tau = 0
-                new_omega = -1 if omega > 0 else (omega - 1 if omega < 0 else -1)
-                new_rho = GammaH_flat[rho * n_tau + tau]
-                new_nu = GammaNu_flat[nu * n_tau + tau]
-                new_e = GammaF_flat[e * (H_max + 1) * (Nu_max + 1) * n_tau + rho * (Nu_max + 1) * n_tau + nu * n_tau + tau]
+                # Linear recovery logic
+                r_new = 1 if rho + 1 >= chi + 1 else 0
+                new_e = max(0, e - r_new)
+                new_rho = rho + 1
                 
-                if enforce_performance_floor > 0.0:
-                    p_new_off = pi_k[new_e]
-                    if p_new_off < enforce_performance_floor:
-                        can_off = False
+                # Check performance floor if needed
+                p_new_off = 1.0 - epsilon * new_e
+                if enforce_performance_floor > 0.0 and p_new_off < enforce_performance_floor:
+                    can_off = False
                 
                 if can_off:
-                    next_states[n_next] = pack_state(new_omega, new_rho, new_nu, new_e, last_worked, 0, first_flag)
+                    next_states[n_next] = pack_state(-1 if omega > 0 else omega - 1, new_rho, new_e, last_worked, 0, first_flag)
                     next_costs[n_next] = cost
                     next_paths[n_next, :] = curr_paths[i, :]
                     next_paths[n_next, next_day] = -1  # Day off
@@ -175,16 +158,20 @@ def forward_pass_numba(
                 if is_forbidden:
                     continue
                 
-                tau = last_worked * (n_shifts + 1) + shift
                 if enforce_no_change == 1 and last_worked > 0 and last_worked != shift:
                     continue
-                    
-                new_omega = 1 if omega <= 0 else omega + 1
-                new_rho = GammaH_flat[rho * n_tau + tau]
-                new_nu = GammaNu_flat[nu * n_tau + tau]
-                new_e = GammaF_flat[e * (H_max + 1) * (Nu_max + 1) * n_tau + rho * (Nu_max + 1) * n_tau + nu * n_tau + tau]
                 
-                p_new = pi_k[new_e]
+                # Linear state transition
+                c_new = 1 if (last_worked > 0 and last_worked != shift) else 0
+                new_rho = 1 if c_new == 0 else 0 # Reset rho on shift change? 
+                # Wait, in subproblem_dp.py: rho_temp = label.rho + 1 if c_new == 0 else 0
+                new_rho = rho + 1 if c_new == 0 else 0
+                r_new = 1 if new_rho >= chi + 1 else 0
+                new_e = max(0, min(e + c_new - r_new, omega_max))
+                
+                kappa = 1 if new_e >= omega_max else 0
+                p_new = 1.0 - epsilon * new_e - xi * kappa
+                
                 if enforce_performance_floor > 0.0 and p_new < enforce_performance_floor:
                     continue
                     
@@ -196,7 +183,7 @@ def forward_pass_numba(
                     new_first = 1
                 
                 if n_next < MAX_STATES:
-                    next_states[n_next] = pack_state(new_omega, new_rho, new_nu, new_e, shift, shift, new_first)
+                    next_states[n_next] = pack_state(1 if omega <= 0 else omega + 1, new_rho, new_e, shift, shift, new_first)
                     next_costs[n_next] = new_cost
                     next_paths[n_next, :] = curr_paths[i, :]
                     next_paths[n_next, next_day] = shift
@@ -205,19 +192,15 @@ def forward_pass_numba(
                 if next_day == n_days and new_cost < best_cost:
                     best_cost = new_cost
         
-        # Dominance pruning - keep ALL paths with same best cost per state
+        # Dominance pruning
         if n_next > 0:
             sort_idx = np.argsort(next_states[:n_next])
-            
             n_pruned = 0
             i = 0
             tol = 1e-9
-            
             while i < n_next:
                 idx = sort_idx[i]
                 current_state = next_states[idx]
-                
-                # First pass: find best cost for this state
                 best_c = next_costs[idx]
                 j = i + 1
                 while j < n_next and next_states[sort_idx[j]] == current_state:
@@ -225,23 +208,18 @@ def forward_pass_numba(
                     if next_costs[jdx] < best_c:
                         best_c = next_costs[jdx]
                     j += 1
-                
-                # Second pass: keep ALL paths with best cost (within tolerance)
                 for k in range(i, j):
                     kdx = sort_idx[k]
                     if abs(next_costs[kdx] - best_c) < tol:
-                        if n_pruned < len(curr_states):
+                        if n_pruned < MAX_STATES:
                             curr_states[n_pruned] = current_state
                             curr_costs[n_pruned] = next_costs[kdx]
                             curr_paths[n_pruned, :] = next_paths[kdx, :]
                             n_pruned += 1
-                
                 i = j
-            
             n_curr = n_pruned
         else:
             n_curr = 0
-    
     return curr_states[:n_curr].copy(), curr_costs[:n_curr].copy(), curr_paths[:n_curr].copy(), n_curr
 
 
@@ -262,32 +240,16 @@ def forward_pass_from_states(
     init_costs: np.ndarray,
     n_init: int,
     enforce_no_change: int,
-    enforce_performance_floor: float,
-    GammaF_flat: np.ndarray,
-    GammaH_flat: np.ndarray,
-    GammaNu_flat: np.ndarray,
-    pi_k: np.ndarray,
-    H_max: int,
-    Nu_max: int
+    enforce_performance_floor: float
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
     """
-    Forward DP pass from start_day to end, starting from given states.
-    
-    This is the second half of meet-in-middle: we continue forward from
-    the states reached at midpoint.
-    
-    Returns:
-        final_states: Final state at end
-        final_costs: Total cost (init_cost + cost_from_mid)
-        init_indices: Which initial state led to this path
-        paths: Path decisions (start_day to end)
-        n_states: Number of final states
+    Forward DP pass from start_day to end, starting from given states (Linear version).
     """
     MAX_STATES = 200000
     
     curr_states = np.zeros(MAX_STATES, dtype=np.int64)
     curr_costs = np.zeros(MAX_STATES, dtype=np.float64)
-    curr_init_idx = np.zeros(MAX_STATES, dtype=np.int32)  # Track which init state
+    curr_init_idx = np.zeros(MAX_STATES, dtype=np.int32)
     curr_paths = np.zeros((MAX_STATES, n_days + 1), dtype=np.int8)
     
     next_states = np.zeros(MAX_STATES, dtype=np.int64)
@@ -303,9 +265,7 @@ def forward_pass_from_states(
         curr_init_idx[i] = i
     
     forbidden = np.array([[3, 1], [3, 2], [2, 1]], dtype=np.int32)
-    n_tau = (n_shifts + 1) * (n_shifts + 1)
     
-    # Continue forward from start_day to n_days
     for d in range(start_day, n_days):
         next_day = d + 1
         n_next = 0
@@ -316,7 +276,7 @@ def forward_pass_from_states(
             cost = curr_costs[i]
             init_idx = curr_init_idx[i]
             
-            omega, rho, nu, e, last_worked, s_last, first_flag = unpack_state(state)
+            omega, rho, e, last_worked, s_last, first_flag = unpack_state(state)
             has_worked = last_worked > 0
             
             # Option 1: Day off
@@ -326,19 +286,17 @@ def forward_pass_from_states(
                     can_off = False
             
             if can_off and n_next < MAX_STATES:
-                tau = 0
-                new_omega = -1 if omega > 0 else (omega - 1 if omega < 0 else -1)
-                new_rho = GammaH_flat[rho * n_tau + tau]
-                new_nu = GammaNu_flat[nu * n_tau + tau]
-                new_e = GammaF_flat[e * (H_max + 1) * (Nu_max + 1) * n_tau + rho * (Nu_max + 1) * n_tau + nu * n_tau + tau]
+                # Linear recovery
+                r_new = 1 if rho + 1 >= chi + 1 else 0
+                new_e = max(0, e - r_new)
+                new_rho = rho + 1
                 
-                if enforce_performance_floor > 0.0:
-                    p_new_off = pi_k[new_e]
-                    if p_new_off < enforce_performance_floor:
-                        can_off = False
+                p_new_off = 1.0 - epsilon * new_e
+                if enforce_performance_floor > 0.0 and p_new_off < enforce_performance_floor:
+                    can_off = False
                 
                 if can_off:
-                    next_states[n_next] = pack_state(new_omega, new_rho, new_nu, new_e, last_worked, 0, first_flag)
+                    next_states[n_next] = pack_state(-1 if omega > 0 else omega - 1, new_rho, new_e, last_worked, 0, first_flag)
                     next_costs[n_next] = cost
                     next_init_idx[n_next] = init_idx
                     next_paths[n_next, :] = curr_paths[i, :]
@@ -361,16 +319,18 @@ def forward_pass_from_states(
                 if is_forbidden:
                     continue
                 
-                tau = last_worked * (n_shifts + 1) + shift
                 if enforce_no_change == 1 and last_worked > 0 and last_worked != shift:
                     continue
                     
-                new_omega = 1 if omega <= 0 else omega + 1
-                new_rho = GammaH_flat[rho * n_tau + tau]
-                new_nu = GammaNu_flat[nu * n_tau + tau]
-                new_e = GammaF_flat[e * (H_max + 1) * (Nu_max + 1) * n_tau + rho * (Nu_max + 1) * n_tau + nu * n_tau + tau]
+                # Linear transition
+                c_new = 1 if (last_worked > 0 and last_worked != shift) else 0
+                new_rho = rho + 1 if c_new == 0 else 0
+                r_new = 1 if new_rho >= chi + 1 else 0
+                new_e = max(0, min(e + c_new - r_new, omega_max))
                 
-                p_new = pi_k[new_e]
+                kappa = 1 if new_e >= omega_max else 0
+                p_new = 1.0 - epsilon * new_e - xi * kappa
+                
                 if enforce_performance_floor > 0.0 and p_new < enforce_performance_floor:
                     continue
                     
@@ -382,28 +342,23 @@ def forward_pass_from_states(
                     new_first = 1
                 
                 if n_next < MAX_STATES:
-                    next_states[n_next] = pack_state(new_omega, new_rho, new_nu, new_e, shift, shift, new_first)
+                    next_states[n_next] = pack_state(1 if omega <= 0 else omega + 1, new_rho, new_e, shift, shift, new_first)
                     next_costs[n_next] = new_cost
                     next_init_idx[n_next] = init_idx
                     next_paths[n_next, :] = curr_paths[i, :]
                     next_paths[n_next, next_day] = shift
                     n_next += 1
         
-        # Dominance: keep best cost for each (state, init_idx) pair
+        # Dominance
         if n_next > 0:
-            # Sort by state, then by init_idx
             sort_idx = np.argsort(next_states[:n_next])
-            
             n_pruned = 0
             i = 0
             while i < n_next:
                 idx = sort_idx[i]
                 current_state = next_states[idx]
-                
-                # For each state, keep only the best overall path
                 best_c = next_costs[idx]
                 best_idx = idx
-                
                 j = i + 1
                 while j < n_next and next_states[sort_idx[j]] == current_state:
                     jdx = sort_idx[j]
@@ -411,18 +366,15 @@ def forward_pass_from_states(
                         best_c = next_costs[jdx]
                         best_idx = jdx
                     j += 1
-                
                 curr_states[n_pruned] = current_state
                 curr_costs[n_pruned] = best_c
                 curr_init_idx[n_pruned] = next_init_idx[best_idx]
                 curr_paths[n_pruned, :] = next_paths[best_idx, :]
                 n_pruned += 1
                 i = j
-            
             n_curr = n_pruned
         else:
             n_curr = 0
-    
     return (curr_states[:n_curr].copy(), curr_costs[:n_curr].copy(), 
             curr_init_idx[:n_curr].copy(), curr_paths[:n_curr].copy(), n_curr)
 
@@ -684,15 +636,8 @@ class SubproblemDPNumba:
             max_dual = max(self.duals_flat[d_idx * n_shifts:(d_idx + 1) * n_shifts])
             self.suffix_bounds[d_idx] = self.suffix_bounds[d_idx + 1] + max_dual
             
-        # Prepare nonlinear transitions
-        nl_spec = getattr(self, "nl_spec", None)
-        GammaF, GammaH, GammaNu, pi_k = generate_transitions(self.epsilon, self.chi, self.omega_max, nl_spec)
-        self.H_max = GammaH.shape[0] - 1
-        self.Nu_max = GammaNu.shape[0] - 1
-        self.GammaF_flat = GammaF.flatten().astype(np.int64)
-        self.GammaH_flat = GammaH.flatten().astype(np.int64)
-        self.GammaNu_flat = GammaNu.flatten().astype(np.int64)
-        self.pi_k = pi_k.astype(np.float64)
+        # No longer using non-linear transitions
+        pass
 
     def buildModel(self):
         pass
@@ -718,8 +663,7 @@ class SubproblemDPNumba:
                     n_days, n_shifts, self.duals_flat, self.duals_i,
                     self.epsilon, self.chi, self.omega_max, self.xi,
                     self.Min_WD, self.Max_WD, self.Days_Off,
-                    self.suffix_bounds, mid_day, enc_nc, enc_pf,
-                    self.GammaF_flat, self.GammaH_flat, self.GammaNu_flat, self.pi_k, self.H_max, self.Nu_max
+                    self.suffix_bounds, mid_day, enc_nc, enc_pf
                 )
                 
                 if n_fwd > 0:
@@ -728,8 +672,7 @@ class SubproblemDPNumba:
                         n_days, n_shifts, self.duals_flat,
                         self.epsilon, self.chi, self.omega_max, self.xi,
                         self.Min_WD, self.Max_WD, self.Days_Off,
-                        mid_day, fwd_states, fwd_costs, n_fwd, enc_nc, enc_pf,
-                        self.GammaF_flat, self.GammaH_flat, self.GammaNu_flat, self.pi_k, self.H_max, self.Nu_max
+                        mid_day, fwd_states, fwd_costs, n_fwd, enc_nc, enc_pf
                     )
                     
                     if n_second > 0:
@@ -770,8 +713,7 @@ class SubproblemDPNumba:
             n_days, n_shifts, self.duals_flat, self.duals_i,
             self.epsilon, self.chi, self.omega_max, self.xi,
             self.Min_WD, self.Max_WD, self.Days_Off,
-            self.suffix_bounds, n_days, enc_nc, enc_pf,
-            self.GammaF_flat, self.GammaH_flat, self.pi_k, self.H_max
+            self.suffix_bounds, n_days, enc_nc, enc_pf
         )
         
         if n_states > 0:
@@ -1077,237 +1019,3 @@ class SubproblemDPNumba:
         """Get performance schedule (same as getNewSchedule)."""
         return self.getNewSchedule()
 
-
-class SubproblemDPBidir:
-    """
-    Bidirectional DP for large instances.
-    Runs forward and backward passes, merges at midpoint.
-    """
-    
-    def __init__(self, duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi):
-        self.itr = iteration + 1
-        self.days = df['T'].dropna().astype(int).unique().tolist()
-        self.shifts = df['K'].dropna().astype(int).unique().tolist()
-        self.duals_i = duals_i
-        self.duals_ts = duals_ts
-        self.index = i
-        self.epsilon = eps
-        self.chi = chi
-        self.omega_max = math.floor(1 / (self.epsilon + 1e-6))
-        self.xi = 1 - self.epsilon * self.omega_max
-        
-        self.Days_Off = 2
-        self.Min_WD = 2
-        self.Max_WD = 5
-        
-        self.status = None
-        self.objval = None
-        self.best_path = None
-        self.model = None
-        
-        self._prepare()
-    
-    def _prepare(self):
-        n_days = len(self.days)
-        n_shifts = len(self.shifts)
-        
-        self.duals_flat = np.zeros(n_days * n_shifts, dtype=np.float64)
-        for d_idx, day in enumerate(self.days):
-            for k_idx, shift in enumerate(self.shifts):
-                self.duals_flat[d_idx * n_shifts + k_idx] = self.duals_ts.get((day, shift), 0.0)
-        
-        self.suffix_bounds = np.zeros(n_days + 2, dtype=np.float64)
-        for d_idx in range(n_days - 1, -1, -1):
-            max_dual = max(self.duals_flat[d_idx * n_shifts:(d_idx + 1) * n_shifts])
-            self.suffix_bounds[d_idx] = self.suffix_bounds[d_idx + 1] + max_dual
-
-    def buildModel(self):
-        pass
-
-    def solveModelOpt(self, timeLimit):
-        n_days = len(self.days)
-        n_shifts = len(self.shifts)
-        mid_day = n_days // 2
-        
-        if NUMBA_AVAILABLE:
-            # Forward pass to midpoint
-            fwd_states, fwd_costs, fwd_paths, n_fwd = forward_pass_numba(
-                n_days, n_shifts, self.duals_flat, self.duals_i,
-                self.epsilon, self.chi, self.omega_max, self.xi,
-                self.Min_WD, self.Max_WD, self.Days_Off,
-                self.suffix_bounds, mid_day
-            )
-            
-            # Backward pass from end to midpoint
-            bwd_states, bwd_costs, bwd_paths, n_bwd = backward_pass_numba(
-                n_days, n_shifts, self.duals_flat,
-                self.epsilon, self.chi, self.omega_max, self.xi,
-                self.Min_WD, self.Max_WD, self.Days_Off, mid_day
-            )
-            
-            # Merge
-            if n_fwd > 0 and n_bwd > 0:
-                best_cost, best_path = merge_bidir(
-                    fwd_states, fwd_costs, fwd_paths, n_fwd,
-                    bwd_states, bwd_costs, bwd_paths, n_bwd,
-                    n_days, mid_day
-                )
-                
-                if best_cost < np.inf:
-                    self.objval = best_cost
-                    self.best_path = best_path
-                    self.status = gu.GRB.OPTIMAL
-                else:
-                    self.objval = float('inf')
-                    self.status = gu.GRB.INFEASIBLE
-            else:
-                self.objval = float('inf')
-                self.status = gu.GRB.INFEASIBLE
-        else:
-            self.objval = float('inf')
-            self.status = gu.GRB.INFEASIBLE
-
-    def solveModelNOpt(self, timeLimit):
-        self.solveModelOpt(timeLimit)
-
-    def getStatus(self):
-        return self.status if self.status else gu.GRB.LOADED
-
-    def getNewSchedule(self):
-        """Return performance schedule for MP column generation."""
-        if self.best_path is None:
-            return {}
-        
-        p_values = self._get_p_values()
-        schedule = {}
-        for d_idx, day in enumerate(self.days):
-            for shift in self.shifts:
-                if self.best_path[d_idx + 1] == shift:
-                    schedule[(day, shift, self.itr)] = p_values.get(day, 1.0)
-                else:
-                    schedule[(day, shift, self.itr)] = 0.0
-        return schedule
-
-    def _get_p_values(self):
-        """Reconstruct performance values from path.
-        
-        P on off days = previous day's value (unless recovery changes e)
-        """
-        if self.best_path is None:
-            return {}
-        
-        n_days = len(self.days)
-        p_values = {}
-        e = 0  # Performance level
-        rho = 0
-        last_worked_shift = None
-        prev_p = 1.0  # Track previous day's value
-        
-        for d_idx, day in enumerate(self.days):
-            shift = self.best_path[d_idx + 1]
-            
-            if shift > 0:  # Working
-                # Check shift change
-                if last_worked_shift is not None and shift != last_worked_shift:
-                    e = min(e + 1, self.omega_max)
-                    rho = 0
-                else:
-                    # Check recovery
-                    if rho >= self.chi and e > 0:
-                        e = e - 1
-                    rho += 1
-                
-                # Calculate performance
-                p = 1.0 - e * self.epsilon
-                p_values[day] = p
-                prev_p = p
-                last_worked_shift = shift
-            else:  # Off day
-                rho += 1
-                # Check recovery during off days
-                if rho >= self.chi and e > 0:
-                    e = max(0, e - 1)
-                    rho = 0
-                    prev_p = 1.0 - e * self.epsilon
-                # P = previous day's value
-                p_values[day] = prev_p
-        
-        return p_values
-
-    def getOptX(self):
-        """Get binary work indicators."""
-        if self.best_path is None:
-            return {}
-        x = {}
-        for d_idx, day in enumerate(self.days):
-            for shift in self.shifts:
-                x[(day, shift)] = 1.0 if self.best_path[d_idx + 1] == shift else 0.0
-        return x
-
-    def getOptP(self):
-        """Get performance values by day."""
-        return self._get_p_values()
-
-    def getOptC(self):
-        """Get shift change indicators."""
-        if self.best_path is None:
-            return {}
-        
-        sc = {}
-        last_shift = None
-        for d_idx, day in enumerate(self.days):
-            shift = self.best_path[d_idx + 1]
-            if shift > 0:
-                if last_shift is not None and shift != last_shift:
-                    sc[day] = 1.0
-                else:
-                    sc[day] = 0.0
-                last_shift = shift
-            else:
-                sc[day] = 0.0
-        return sc
-
-    def getOptR(self):
-        """Get recovery indicators."""
-        if self.best_path is None:
-            return {}
-        
-        r = {}
-        rho = 0
-        e = 0
-        last_worked_shift = None
-        
-        for d_idx, day in enumerate(self.days):
-            shift = self.best_path[d_idx + 1]
-            
-            if shift > 0:
-                # Check shift change effect
-                if last_worked_shift is not None and shift != last_worked_shift:
-                    if e < self.omega_max:
-                        e += 1
-                    rho = 0
-                
-                r[day] = 0.0
-                last_worked_shift = shift
-                rho = 0
-            else:
-                rho += 1
-                if rho >= self.chi and e > 0:
-                    e -= 1
-                    rho = 0
-                    r[day] = 1.0
-                else:
-                    r[day] = 0.0
-        return r
-
-    def getOptEUp(self):
-        """Get E upper (shift change at max perf)."""
-        return {}  # Not needed for basic analysis
-
-    def getOptElow(self):
-        """Get E lower (recovery effect)."""
-        return {}  # Not needed for basic analysis
-
-    def getOptPerf(self):
-        """Get performance schedule (same as getNewSchedule)."""
-        return self.getNewSchedule()

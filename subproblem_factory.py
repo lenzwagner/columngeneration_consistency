@@ -19,8 +19,7 @@ except ImportError:
 
 def create_subproblem(solver_type: str, duals_i, duals_ts, df, i, iteration,
                      eps, Min_WD_i, Max_WD_i, chi, use_bidir=False,
-                     enforce_no_change=False, enforce_performance_floor=None,
-                     nl_spec=None):
+                     enforce_no_change=False, enforce_performance_floor=None):
     """
     Factory function to create a subproblem solver.
 
@@ -53,14 +52,14 @@ def create_subproblem(solver_type: str, duals_i, duals_ts, df, i, iteration,
         sp = Subproblem(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
         sp.enforce_no_change = enforce_no_change
         sp.enforce_performance_floor = enforce_performance_floor
-        sp.nl_spec = nl_spec
+
         return sp
     
     elif solver == 'dp':
         sp = SubproblemDP(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
         sp.enforce_no_change = enforce_no_change
         sp.enforce_performance_floor = enforce_performance_floor
-        sp.nl_spec = nl_spec
+
         return sp
     
     elif solver == 'labeling':
@@ -69,13 +68,13 @@ def create_subproblem(solver_type: str, duals_i, duals_ts, df, i, iteration,
             sp = SubproblemDP(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
             sp.enforce_no_change = enforce_no_change
             sp.enforce_performance_floor = enforce_performance_floor
-            sp.nl_spec = nl_spec
+
             return sp
         sp = SubproblemDPNumba(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
         sp._use_bidir = use_bidir  # Flag for bidirectional mode
         sp.enforce_no_change = enforce_no_change
         sp.enforce_performance_floor = enforce_performance_floor
-        sp.nl_spec = nl_spec
+
         return sp
     
     elif solver == 'labeling_bidir':
@@ -84,13 +83,13 @@ def create_subproblem(solver_type: str, duals_i, duals_ts, df, i, iteration,
             sp = SubproblemDP(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
             sp.enforce_no_change = enforce_no_change
             sp.enforce_performance_floor = enforce_performance_floor
-            sp.nl_spec = nl_spec
+
             return sp
         sp = SubproblemDPNumba(duals_i, duals_ts, df, i, iteration, eps, Min_WD_i, Max_WD_i, chi)
         sp._use_bidir = True  # Force bidirectional mode
         sp.enforce_no_change = enforce_no_change
         sp.enforce_performance_floor = enforce_performance_floor
-        sp.nl_spec = nl_spec
+
         return sp
     
     else:

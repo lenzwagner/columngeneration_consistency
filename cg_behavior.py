@@ -74,7 +74,7 @@ def generate_feasible_schedule_heuristic(T, K, eps=0.06):
         'elow': elow
     }
 
-def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi, threshold, time_cg, I, T, K, scale, sp_solver='mip', start_values=None, save_lp=False, worker_groups=None, use_heuristic_start=True, use_null_column=False, enforce_no_change=False, enforce_performance_floor=None, nl_spec=None):
+def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_cg_init, max_itr, output_len, chi, threshold, time_cg, I, T, K, scale, sp_solver='mip', start_values=None, save_lp=False, worker_groups=None, use_heuristic_start=True, use_null_column=False, enforce_no_change=False, enforce_performance_floor=None):
     # **** Column Generation ****
     # Prerequisites
     modelImprovable = True
@@ -261,8 +261,7 @@ def column_generation_behavior(data, demand_dict, eps, Min_WD_i, Max_WD_i, time_
                 sp_solver, group_dual_i, duals_ts, data, representative_worker, itr,
                 group.epsilon, Min_WD_i, Max_WD_i, group.chi,
                 enforce_no_change=enforce_no_change,
-                enforce_performance_floor=enforce_performance_floor,
-                nl_spec=nl_spec
+                enforce_performance_floor=enforce_performance_floor
             )
             subproblem.buildModel()
 
