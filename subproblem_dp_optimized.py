@@ -37,27 +37,29 @@ except ImportError:
 
 
 @njit(cache=True)
-def pack_state(omega: int, rho: int, e: int, last_worked: int, s_last: int, 
+def pack_state(omega: int, rho: int, nu: int, e: int, last_worked: int, s_last: int, 
                first_flag: int) -> np.int64:
     """Pack state variables into single int64."""
     return np.int64(((omega + 10) & 0x1F) |
                     ((rho & 0x1F) << 5) |
-                    ((e & 0x1F) << 10) |
-                    ((last_worked & 0x7) << 15) |
-                    ((s_last & 0x7) << 18) |
-                    ((first_flag & 0x1) << 21))
+                    ((nu & 0x1F) << 10) |
+                    ((e & 0x7F) << 15) |
+                    ((last_worked & 0x7) << 22) |
+                    ((s_last & 0x7) << 25) |
+                    ((first_flag & 0x1) << 28))
 
 
 @njit(cache=True)
-def unpack_state(state: np.int64) -> Tuple[int, int, int, int, int, int]:
+def unpack_state(state: np.int64) -> Tuple[int, int, int, int, int, int, int]:
     """Unpack state from int64."""
     omega = (state & 0x1F) - 10
     rho = (state >> 5) & 0x1F
-    e = (state >> 10) & 0x1F
-    last_worked = (state >> 15) & 0x7
-    s_last = (state >> 18) & 0x7
-    first_flag = (state >> 21) & 0x1
-    return omega, rho, e, last_worked, s_last, first_flag
+    nu = (state >> 10) & 0x1F
+    e = (state >> 15) & 0x7F
+    last_worked = (state >> 22) & 0x7
+    s_last = (state >> 25) & 0x7
+    first_flag = (state >> 28) & 0x1
+    return omega, rho, nu, e, last_worked, s_last, first_flag
 
 
 @njit(cache=True)
@@ -79,8 +81,10 @@ def forward_pass_numba(
     enforce_performance_floor: float,
     GammaF_flat: np.ndarray,
     GammaH_flat: np.ndarray,
+    GammaNu_flat: np.ndarray,
     pi_k: np.ndarray,
-    H_max: int
+    H_max: int,
+    Nu_max: int
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
     """
     Forward DP pass from day 0 to stop_day.
@@ -102,7 +106,7 @@ def forward_pass_numba(
     next_paths = np.zeros((MAX_STATES, n_days + 1), dtype=np.int8)
     
     # Initial state
-    curr_states[0] = pack_state(0, 0, 0, 0, 0, 0)
+    curr_states[0] = pack_state(0, 0, 0, 0, 0, 0, 0)
     curr_costs[0] = -duals_i
     n_curr = 1
     
@@ -110,6 +114,8 @@ def forward_pass_numba(
     
     # Forbidden pairs: (3,1), (3,2), (2,1)
     forbidden = np.array([[3, 1], [3, 2], [2, 1]], dtype=np.int32)
+    
+    n_tau = (n_shifts + 1) * (n_shifts + 1)
     
     for d in range(stop_day):
         next_day = d + 1
@@ -124,7 +130,7 @@ def forward_pass_numba(
             if cost - suffix_bounds[next_day - 1] >= best_cost - 1e-9:
                 continue
             
-            omega, rho, e, last_worked, s_last, first_flag = unpack_state(state)
+            omega, rho, nu, e, last_worked, s_last, first_flag = unpack_state(state)
             has_worked = last_worked > 0
             
             # Option 1: Day off
@@ -136,8 +142,9 @@ def forward_pass_numba(
             if can_off and n_next < MAX_STATES:
                 tau = 0
                 new_omega = -1 if omega > 0 else (omega - 1 if omega < 0 else -1)
-                new_rho = GammaH_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
-                new_e = GammaF_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
+                new_rho = GammaH_flat[rho * n_tau + tau]
+                new_nu = GammaNu_flat[nu * n_tau + tau]
+                new_e = GammaF_flat[e * (H_max + 1) * (Nu_max + 1) * n_tau + rho * (Nu_max + 1) * n_tau + nu * n_tau + tau]
                 
                 if enforce_performance_floor > 0.0:
                     p_new_off = pi_k[new_e]
@@ -145,7 +152,7 @@ def forward_pass_numba(
                         can_off = False
                 
                 if can_off:
-                    next_states[n_next] = pack_state(new_omega, new_rho, new_e, last_worked, 0, first_flag)
+                    next_states[n_next] = pack_state(new_omega, new_rho, new_nu, new_e, last_worked, 0, first_flag)
                     next_costs[n_next] = cost
                     next_paths[n_next, :] = curr_paths[i, :]
                     next_paths[n_next, next_day] = -1  # Day off
@@ -168,13 +175,14 @@ def forward_pass_numba(
                 if is_forbidden:
                     continue
                 
-                tau = 4 if last_worked == 0 else (1 if last_worked == shift else (2 if last_worked < shift else 3))
-                if enforce_no_change == 1 and (tau == 2 or tau == 3):
+                tau = last_worked * (n_shifts + 1) + shift
+                if enforce_no_change == 1 and last_worked > 0 and last_worked != shift:
                     continue
                     
                 new_omega = 1 if omega <= 0 else omega + 1
-                new_rho = GammaH_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
-                new_e = GammaF_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
+                new_rho = GammaH_flat[rho * n_tau + tau]
+                new_nu = GammaNu_flat[nu * n_tau + tau]
+                new_e = GammaF_flat[e * (H_max + 1) * (Nu_max + 1) * n_tau + rho * (Nu_max + 1) * n_tau + nu * n_tau + tau]
                 
                 p_new = pi_k[new_e]
                 if enforce_performance_floor > 0.0 and p_new < enforce_performance_floor:
@@ -188,7 +196,7 @@ def forward_pass_numba(
                     new_first = 1
                 
                 if n_next < MAX_STATES:
-                    next_states[n_next] = pack_state(new_omega, new_rho, new_e, shift, shift, new_first)
+                    next_states[n_next] = pack_state(new_omega, new_rho, new_nu, new_e, shift, shift, new_first)
                     next_costs[n_next] = new_cost
                     next_paths[n_next, :] = curr_paths[i, :]
                     next_paths[n_next, next_day] = shift
@@ -257,8 +265,10 @@ def forward_pass_from_states(
     enforce_performance_floor: float,
     GammaF_flat: np.ndarray,
     GammaH_flat: np.ndarray,
+    GammaNu_flat: np.ndarray,
     pi_k: np.ndarray,
-    H_max: int
+    H_max: int,
+    Nu_max: int
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
     """
     Forward DP pass from start_day to end, starting from given states.
@@ -293,6 +303,7 @@ def forward_pass_from_states(
         curr_init_idx[i] = i
     
     forbidden = np.array([[3, 1], [3, 2], [2, 1]], dtype=np.int32)
+    n_tau = (n_shifts + 1) * (n_shifts + 1)
     
     # Continue forward from start_day to n_days
     for d in range(start_day, n_days):
@@ -305,7 +316,7 @@ def forward_pass_from_states(
             cost = curr_costs[i]
             init_idx = curr_init_idx[i]
             
-            omega, rho, e, last_worked, s_last, first_flag = unpack_state(state)
+            omega, rho, nu, e, last_worked, s_last, first_flag = unpack_state(state)
             has_worked = last_worked > 0
             
             # Option 1: Day off
@@ -317,8 +328,9 @@ def forward_pass_from_states(
             if can_off and n_next < MAX_STATES:
                 tau = 0
                 new_omega = -1 if omega > 0 else (omega - 1 if omega < 0 else -1)
-                new_rho = GammaH_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
-                new_e = GammaF_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
+                new_rho = GammaH_flat[rho * n_tau + tau]
+                new_nu = GammaNu_flat[nu * n_tau + tau]
+                new_e = GammaF_flat[e * (H_max + 1) * (Nu_max + 1) * n_tau + rho * (Nu_max + 1) * n_tau + nu * n_tau + tau]
                 
                 if enforce_performance_floor > 0.0:
                     p_new_off = pi_k[new_e]
@@ -326,7 +338,7 @@ def forward_pass_from_states(
                         can_off = False
                 
                 if can_off:
-                    next_states[n_next] = pack_state(new_omega, new_rho, new_e, last_worked, 0, first_flag)
+                    next_states[n_next] = pack_state(new_omega, new_rho, new_nu, new_e, last_worked, 0, first_flag)
                     next_costs[n_next] = cost
                     next_init_idx[n_next] = init_idx
                     next_paths[n_next, :] = curr_paths[i, :]
@@ -349,13 +361,14 @@ def forward_pass_from_states(
                 if is_forbidden:
                     continue
                 
-                tau = 4 if last_worked == 0 else (1 if last_worked == shift else (2 if last_worked < shift else 3))
-                if enforce_no_change == 1 and (tau == 2 or tau == 3):
+                tau = last_worked * (n_shifts + 1) + shift
+                if enforce_no_change == 1 and last_worked > 0 and last_worked != shift:
                     continue
                     
                 new_omega = 1 if omega <= 0 else omega + 1
-                new_rho = GammaH_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
-                new_e = GammaF_flat[e * (H_max + 1) * 5 + rho * 5 + tau]
+                new_rho = GammaH_flat[rho * n_tau + tau]
+                new_nu = GammaNu_flat[nu * n_tau + tau]
+                new_e = GammaF_flat[e * (H_max + 1) * (Nu_max + 1) * n_tau + rho * (Nu_max + 1) * n_tau + nu * n_tau + tau]
                 
                 p_new = pi_k[new_e]
                 if enforce_performance_floor > 0.0 and p_new < enforce_performance_floor:
@@ -369,7 +382,7 @@ def forward_pass_from_states(
                     new_first = 1
                 
                 if n_next < MAX_STATES:
-                    next_states[n_next] = pack_state(new_omega, new_rho, new_e, shift, shift, new_first)
+                    next_states[n_next] = pack_state(new_omega, new_rho, new_nu, new_e, shift, shift, new_first)
                     next_costs[n_next] = new_cost
                     next_init_idx[n_next] = init_idx
                     next_paths[n_next, :] = curr_paths[i, :]
@@ -673,10 +686,12 @@ class SubproblemDPNumba:
             
         # Prepare nonlinear transitions
         nl_spec = getattr(self, "nl_spec", None)
-        GammaF, GammaH, pi_k = generate_transitions(self.epsilon, self.chi, self.omega_max, nl_spec)
-        self.H_max = GammaH.shape[1] - 1
+        GammaF, GammaH, GammaNu, pi_k = generate_transitions(self.epsilon, self.chi, self.omega_max, nl_spec)
+        self.H_max = GammaH.shape[0] - 1
+        self.Nu_max = GammaNu.shape[0] - 1
         self.GammaF_flat = GammaF.flatten().astype(np.int64)
         self.GammaH_flat = GammaH.flatten().astype(np.int64)
+        self.GammaNu_flat = GammaNu.flatten().astype(np.int64)
         self.pi_k = pi_k.astype(np.float64)
 
     def buildModel(self):
@@ -704,7 +719,7 @@ class SubproblemDPNumba:
                     self.epsilon, self.chi, self.omega_max, self.xi,
                     self.Min_WD, self.Max_WD, self.Days_Off,
                     self.suffix_bounds, mid_day, enc_nc, enc_pf,
-                    self.GammaF_flat, self.GammaH_flat, self.pi_k, self.H_max
+                    self.GammaF_flat, self.GammaH_flat, self.GammaNu_flat, self.pi_k, self.H_max, self.Nu_max
                 )
                 
                 if n_fwd > 0:
@@ -714,7 +729,7 @@ class SubproblemDPNumba:
                         self.epsilon, self.chi, self.omega_max, self.xi,
                         self.Min_WD, self.Max_WD, self.Days_Off,
                         mid_day, fwd_states, fwd_costs, n_fwd, enc_nc, enc_pf,
-                        self.GammaF_flat, self.GammaH_flat, self.pi_k, self.H_max
+                        self.GammaF_flat, self.GammaH_flat, self.GammaNu_flat, self.pi_k, self.H_max, self.Nu_max
                     )
                     
                     if n_second > 0:
