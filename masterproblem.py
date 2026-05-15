@@ -1,6 +1,7 @@
 import gurobipy as gu
 import numpy as np
 from Utils.metrics import calculate_gini, compute_autocorrelation
+from nonlinear_transitions import evaluate_schedule_nl
 
 
 class MasterProblem:
@@ -340,8 +341,12 @@ class MasterProblem:
 
         return self._final_metrics_package(undercoverage, understaffing, perfloss, consistency, scale)
 
-    def calc_naive(self, lst, ls_sc, ls_r, mue, scale):
+    def calc_naive(self, lst, ls_sc, ls_r, mue, scale, nl_spec=None):
         """Calculate metrics using naive (post-hoc) performance degradation."""
+        if nl_spec is not None:
+            # Non-linear evaluation
+            return self._calc_naive_nl(lst, ls_sc, mue, scale, nl_spec)
+        
         consistency = sum(ls_sc)
         perf_ls = []
         n_nurses = len(self.nurses)
@@ -386,6 +391,58 @@ class MasterProblem:
         
         metrics = self._final_metrics_package(u_results + sum_all_doctors, u_results, sum_all_doctors, consistency, scale)
         return (*metrics, perf_ls, cumulative_total)
+
+    def _calc_naive_nl(self, lst, ls_sc, mue, scale, nl_spec):
+        """Internal method for non-linear post-hoc evaluation."""
+        consistency = sum(ls_sc)
+        perf_ls = []
+        n_nurses = len(self.nurses)
+        sublist_length = len(lst) // n_nurses
+        
+        # Track real supply per shift
+        real_supply_per_shift = [0.0] * (len(self.days) * len(self.shifts))
+        x_values = [1.0 if val > 0 else 0.0 for val in lst]
+
+        for idx in range(n_nurses):
+            worker_x = x_values[idx * sublist_length : (idx + 1) * sublist_length]
+            
+            # Create x_dict for evaluate_schedule_nl
+            x_dict = {}
+            for d_idx, day in enumerate(self.days):
+                for s_idx, shift in enumerate(self.shifts):
+                    if worker_x[d_idx * len(self.shifts) + s_idx] > 0.5:
+                        x_dict[(day, shift)] = 1.0
+            
+            perf_hist, _, _, _ = evaluate_schedule_nl(x_dict, self.days, self.shifts, nl_spec)
+            
+            # Reconstruct performance list for return
+            worker_perf_ls = []
+            for d_idx, day in enumerate(self.days):
+                p = perf_hist[day]
+                worker_perf_ls.append(p)
+                for s_idx, shift in enumerate(self.shifts):
+                    i = d_idx * len(self.shifts) + s_idx
+                    if worker_x[i] > 0.5:
+                        real_supply_per_shift[i] += p
+            perf_ls.extend(worker_perf_ls)
+            
+        # Real undercoverage = sum(max(0, demand - real_supply))
+        u_results = [max(0, self.demand_values[i] - real_supply_per_shift[i]) for i in range(len(self.demand_values))]
+        total_undercoverage = sum(u_results)
+        
+        # For compatibility with _final_metrics_package, we need to separate
+        # understaffing (nominal missing) and perfloss (missing due to p < 1).
+        # Understaffing = sum(max(0, demand - nominal_supply))
+        nominal_supply = [0.0] * (len(self.days) * len(self.shifts))
+        for i in range(len(x_values)):
+            if x_values[i] > 0.5:
+                nominal_supply[i % len(nominal_supply)] += 1.0
+        
+        understaffing = sum(max(0, self.demand_values[i] - nominal_supply[i]) for i in range(len(self.demand_values)))
+        perfloss = total_undercoverage - understaffing
+            
+        metrics = self._final_metrics_package(total_undercoverage, understaffing, perfloss, consistency, scale)
+        return (*metrics, perf_ls, [0]*len(lst)) # cumulative_total not easily compatible here
 
     def getUndercoverage(self):
         return [self.u[t, k].X for t in self.days for k in self.shifts]

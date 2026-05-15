@@ -15,7 +15,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 import gurobipy as gu
-
+from nonlinear_transitions import h_func, r_func
 
 try:
     from numba import njit, prange
@@ -37,27 +37,34 @@ except ImportError:
 
 
 @njit(cache=True)
-def pack_state(omega: int, rho: int, e: int, last_worked: int, s_last: int, 
+def pack_state(omega: int, rho: int, nu: int, e: float, last_worked: int, s_last: int, 
                first_flag: int) -> np.int64:
     """Pack state variables into single int64."""
+    # We discretize e for packing if needed, but here we might just pack it as an int if it's small or use a different approach.
+    # Actually, in the linear case e was an int. In NL it's a float.
+    # Let's pack e as int(e * 1000) to keep some precision, or just use a larger bit range.
+    e_int = int(round(e * 1000))
     return np.int64(((omega + 10) & 0x1F) |
-                    ((rho & 0x1F) << 5) |
-                    ((e & 0x7F) << 10) |
-                    ((last_worked & 0x7) << 17) |
-                    ((s_last & 0x7) << 20) |
-                    ((first_flag & 0x1) << 23))
+                    ((rho & 0x3F) << 5) |
+                    ((nu & 0x3F) << 11) |
+                    ((e_int & 0x3FF) << 17) | # Up to 1.023 with 0.001 precision
+                    ((last_worked & 0x7) << 27) |
+                    ((s_last & 0x7) << 30) |
+                    ((first_flag & 0x1) << 33))
 
 
 @njit(cache=True)
-def unpack_state(state: np.int64) -> Tuple[int, int, int, int, int, int]:
+def unpack_state(state: np.int64) -> Tuple[int, int, int, float, int, int, int]:
     """Unpack state from int64."""
     omega = (state & 0x1F) - 10
-    rho = (state >> 5) & 0x1F
-    e = (state >> 10) & 0x7F
-    last_worked = (state >> 17) & 0x7
-    s_last = (state >> 20) & 0x7
-    first_flag = (state >> 23) & 0x1
-    return omega, rho, e, last_worked, s_last, first_flag
+    rho = (state >> 5) & 0x3F
+    nu = (state >> 11) & 0x3F
+    e_int = (state >> 17) & 0x3FF
+    e = e_int / 1000.0
+    last_worked = (state >> 27) & 0x7
+    s_last = (state >> 30) & 0x7
+    first_flag = (state >> 33) & 0x1
+    return omega, rho, nu, e, last_worked, s_last, first_flag
 
 
 @njit(cache=True)
@@ -76,11 +83,23 @@ def forward_pass_numba(
     suffix_bounds: np.ndarray,
     stop_day: int,
     enforce_no_change: int,
-    enforce_performance_floor: float
+    enforce_performance_floor: float,
+    nl_params: Optional[Dict] = None
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
     """
-    Forward DP pass from day 0 to stop_day (Linear version).
+    Forward DP pass with support for Linear and Non-linear Dynamics.
     """
+    # Extract NL params if available
+    is_nl = nl_params is not None
+    gamma_R = 1.0; gamma_C = 1.0; alpha_R = 1.0; e_max = 1.0
+    delta_flat = np.zeros(16)
+    if is_nl:
+        gamma_R = nl_params['gamma_R']
+        gamma_C = nl_params['gamma_C']
+        alpha_R = nl_params['alpha_R']
+        delta_flat = nl_params['delta_flat']
+        e_max = nl_params['e_max']
+
     MAX_STATES = 200000
     
     curr_states = np.zeros(MAX_STATES, dtype=np.int64)
@@ -92,7 +111,8 @@ def forward_pass_numba(
     next_paths = np.zeros((MAX_STATES, n_days + 1), dtype=np.int8)
     
     # Initial state
-    curr_states[0] = pack_state(0, 0, 0, 0, 0, 0)
+    # pack_state(omega, rho, nu, e, last_worked, s_last, first_flag)
+    curr_states[0] = pack_state(0, 0, 0, 0.0, 0, 0, 1)
     curr_costs[0] = -duals_i
     n_curr = 1
     
@@ -114,7 +134,7 @@ def forward_pass_numba(
             if cost - suffix_bounds[next_day - 1] >= best_cost - 1e-9:
                 continue
             
-            omega, rho, e, last_worked, s_last, first_flag = unpack_state(state)
+            omega, rho, nu, e, last_worked, s_last, first_flag = unpack_state(state)
             has_worked = last_worked > 0
             
             # Option 1: Day off
@@ -124,18 +144,24 @@ def forward_pass_numba(
                     can_off = False
             
             if can_off and n_next < MAX_STATES:
-                # Linear recovery logic
-                r_new = 1 if rho + 1 >= chi + 1 else 0
-                new_e = max(0, e - r_new)
+                # State transition
                 new_rho = rho + 1
+                new_nu = 0
+                
+                if is_nl:
+                    recov = r_func(new_rho, chi, gamma_R, alpha_R)
+                    new_e = max(0.0, e - recov)
+                else:
+                    r_new = 1 if new_rho >= chi + 1 else 0
+                    new_e = max(0.0, e - float(r_new))
                 
                 # Check performance floor if needed
-                p_new_off = 1.0 - epsilon * new_e
+                p_new_off = 1.0 - new_e if is_nl else (1.0 - epsilon * new_e)
                 if enforce_performance_floor > 0.0 and p_new_off < enforce_performance_floor:
                     can_off = False
                 
                 if can_off:
-                    next_states[n_next] = pack_state(-1 if omega > 0 else omega - 1, new_rho, new_e, last_worked, 0, first_flag)
+                    next_states[n_next] = pack_state(-1 if omega > 0 else omega - 1, new_rho, new_nu, new_e, last_worked, 0, first_flag)
                     next_costs[n_next] = cost
                     next_paths[n_next, :] = curr_paths[i, :]
                     next_paths[n_next, next_day] = -1  # Day off
@@ -161,16 +187,24 @@ def forward_pass_numba(
                 if enforce_no_change == 1 and last_worked > 0 and last_worked != shift:
                     continue
                 
-                # Linear state transition
+                # State transition
                 c_new = 1 if (last_worked > 0 and last_worked != shift) else 0
-                new_rho = 1 if c_new == 0 else 0 # Reset rho on shift change? 
-                # Wait, in subproblem_dp.py: rho_temp = label.rho + 1 if c_new == 0 else 0
                 new_rho = rho + 1 if c_new == 0 else 0
-                r_new = 1 if new_rho >= chi + 1 else 0
-                new_e = max(0, min(e + c_new - r_new, omega_max))
+                new_nu = nu + 1 if c_new == 1 else 0
                 
-                kappa = 1 if new_e >= omega_max else 0
-                p_new = 1.0 - epsilon * new_e - xi * kappa
+                if is_nl:
+                    if c_new == 1:
+                        degrad = delta_flat[last_worked * 4 + shift] * h_func(new_nu, gamma_C)
+                        new_e = min(e_max, e + degrad)
+                    else:
+                        recov = r_func(new_rho, chi, gamma_R, alpha_R)
+                        new_e = max(0.0, e - recov)
+                    p_new = 1.0 - new_e
+                else:
+                    r_new = 1 if new_rho >= chi + 1 else 0
+                    new_e = max(0.0, min(e + float(c_new) - float(r_new), float(omega_max)))
+                    kappa = 1 if new_e >= omega_max else 0
+                    p_new = 1.0 - epsilon * new_e - xi * float(kappa)
                 
                 if enforce_performance_floor > 0.0 and p_new < enforce_performance_floor:
                     continue
@@ -183,7 +217,7 @@ def forward_pass_numba(
                     new_first = 1
                 
                 if n_next < MAX_STATES:
-                    next_states[n_next] = pack_state(1 if omega <= 0 else omega + 1, new_rho, new_e, shift, shift, new_first)
+                    next_states[n_next] = pack_state(1 if omega <= 0 else omega + 1, new_rho, new_nu, new_e, shift, shift, new_first)
                     next_costs[n_next] = new_cost
                     next_paths[n_next, :] = curr_paths[i, :]
                     next_paths[n_next, next_day] = shift
