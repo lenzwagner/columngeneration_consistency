@@ -6,6 +6,7 @@ import csv
 from cg_behavior import column_generation_behavior
 from worker_groups import create_homogeneous_group
 from nonlinear_transitions import evaluate_schedule_nl, h_func, r_func
+from Utils.gcutil import generate_dict_from_excel
 
 def get_matrices(epsilon):
     """Defines the three delta matrices."""
@@ -37,7 +38,7 @@ def get_matrices(epsilon):
 def run_experiment():
     I_sizes = [100]
     scarcities = [('Medium', 1.0)]
-    seeds = range(1, 26) 
+    seeds = range(1, 2)
     
     # Parameter Sets
     epsilon = 0.06
@@ -69,24 +70,18 @@ def run_experiment():
         count = 0
         
         for seed in seeds:
-            # Generate demand once per seed
-            np.random.seed(seed)
+            # LOAD DEMAND FROM EXCEL (AS IN OTHER SCRIPTS)
+            demand = generate_dict_from_excel('data/demand_data.xlsx', 100, 'Medium', scenario=seed)
+            
+            if not demand:
+                print(f"Skipping Seed {seed} - No demand data found.")
+                continue
+
             T_days = 28
             T = list(range(1, T_days + 1))
             K = [1, 2, 3]
             I = list(range(1, 101))
-            total_q = 100 * 1.0 # Medium
-            demand = {}
-            for t in T:
-                q_t = int(round(total_q * np.random.uniform(0.75, 1.25)))
-                z_L = np.random.uniform(0, 1)
-                q_L = int(round(z_L * q_t))
-                z_N = np.random.uniform(0, 1)
-                q_N = int(round(z_N * (q_t - q_L)))
-                demand[(t, 1)] = max(0, q_t - q_L - q_N)
-                demand[(t, 2)] = max(0, q_L)
-                demand[(t, 3)] = max(0, q_N)
-                
+            
             df_placeholder = pd.DataFrame([{'T': t, 'K': k, 'I': 1} for t in T for k in K])
 
             for m_name, delta in matrices_dict.items():
